@@ -1,0 +1,60 @@
+#include "bulwark/models/ChainEventInfo.h"
+#include "bulwark/models/SecurityEvent.h"
+#include "bulwark/json/JsonSupport.h"
+
+namespace bulwark {
+using namespace bulwark::json;
+
+namespace {
+QString truncate(const QString& s, int max) {
+    if (s.isEmpty() || s.size() <= max) return s;
+    return s.left(max) + QString::fromUtf8("…");
+}
+}
+
+ChainEventInfo ChainEventInfo::from(const SecurityEvent& e) {
+    ChainEventInfo c;
+    c.timestampUtc = e.timestampUtc.isValid() ? e.timestampUtc : nowUtc();
+    c.type = e.type;
+    c.actorPid = e.actorPid;
+    c.parentPid = e.parentPid;
+    c.actorPath = e.actorPath;
+    c.commandLine = truncate(e.commandLine, 256);
+    c.target = e.target;
+    c.riskScore = e.riskScore;
+    c.originKind = e.originKind;
+    c.originLabel = e.originLabel();
+    return c;
+}
+
+QJsonObject ChainEventInfo::toJson() const {
+    QJsonObject o;
+    o["timestampUtc"] = dateTimeToIso(timestampUtc);
+    o["type"] = static_cast<int>(type);
+    o["actorPid"] = actorPid;
+    o["parentPid"] = parentPid;
+    o["actorPath"] = actorPath;
+    if (!commandLine.isEmpty()) o["commandLine"] = commandLine;
+    o["target"] = target;
+    o["riskScore"] = riskScore;
+    if (originKind != ProcessOriginKind::Unknown) o["originKind"] = static_cast<int>(originKind);
+    if (!originLabel.isEmpty()) o["originLabel"] = originLabel;
+    return o;
+}
+
+ChainEventInfo ChainEventInfo::fromJson(const QJsonObject& o) {
+    ChainEventInfo c;
+    c.timestampUtc = dateTimeFromIso(getStr(o, "timestampUtc"));
+    c.type = static_cast<EventType>(getInt(o, "type"));
+    c.actorPid = getInt(o, "actorPid");
+    c.parentPid = getInt(o, "parentPid");
+    c.actorPath = getStr(o, "actorPath");
+    c.commandLine = getStr(o, "commandLine");
+    c.target = getStr(o, "target");
+    c.riskScore = getInt(o, "riskScore");
+    c.originKind = static_cast<ProcessOriginKind>(getInt(o, "originKind", 0));
+    c.originLabel = getStr(o, "originLabel");
+    return c;
+}
+
+}

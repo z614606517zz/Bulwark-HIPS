@@ -1,0 +1,11 @@
+# 服务程序里不能再有调用大模型的代码:「AI 全权裁决」已经移除,放行和拦截只由本地引擎和用户决定。
+if(NOT EXE OR NOT EXISTS "${EXE}")
+    message(FATAL_ERROR "EXE not found: ${EXE}")
+endif()
+foreach(encoding UTF-8 UTF-16LE)
+    file(STRINGS "${EXE}" hits ENCODING ${encoding} REGEX "/chat/completions")
+    if(hits)
+        message(FATAL_ERROR "${EXE} contains /chat/completions (${encoding}): the service must not call a language model")
+    endif()
+endforeach()
+message(STATUS "OK: ${EXE} contains no /chat/completions")

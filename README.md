@@ -6,6 +6,36 @@ Bulwark 是一个面向 Windows 的主机行为防护项目。内核驱动和后
 >
 > 仓库没有 `LICENSE` 文件。公开可见源码不等于已经授予复制、修改或再分发的权利。
 
+## 界面预览
+
+> 下面的截图由仓库里的离屏预览工具（`bulwark_prompt_preview`，CMake 选项 `BULWARK_BUILD_UI_PREVIEW`）用内置示例数据渲染，用来展示界面长相，不是真实主机上的检测记录。
+
+界面有「机甲」「卡哇伊」「金刚」三套风格，下面是同一个仪表盘在三套风格下的样子。
+
+**金刚**
+
+![仪表盘 · 金刚风格](docs/images/dashboard-titan.png)
+
+| 机甲 | 卡哇伊 |
+|---|---|
+| ![仪表盘 · 机甲风格](docs/images/dashboard-mecha.png) | ![仪表盘 · 卡哇伊风格](docs/images/dashboard-kawaii.png) |
+
+**询问弹窗与拦截通知**：弹窗给出风险分、签名、提示原因、ATT&CK 技术编号和还原后的命令行，倒计时结束按策略自动处理；拦截后在桌面角落弹出通知，可以撤销。
+
+| 高危询问弹窗（机甲） | YARA 命中询问（卡哇伊） | 拦截通知（金刚） |
+|---|---|---|
+| ![高危询问弹窗](docs/images/prompt-danger-mecha.png) | ![YARA 命中询问弹窗](docs/images/prompt-yara-kawaii.png) | ![拦截通知](docs/images/toast-blocked-titan.png) |
+
+**事件详情与设置**
+
+| 事件记录与详情抽屉（机甲） | 防护总控与受保护目录（金刚） |
+|---|---|
+| ![事件记录与详情抽屉](docs/images/events-detail-mecha.png) | ![设置 · 防护总控](docs/images/settings-titan.png) |
+
+在「设置 → 外观与通知」里切换三套风格：
+
+![设置 · 外观与通知](docs/images/settings-skins-kawaii.png)
+
 ## 组成
 
 | 组件 | 产物 | 职责 |
@@ -299,6 +329,7 @@ cpp/scripts/      开发构建、打包、服务安装、AMSI 注册、驱动策
 cpp/third_party/  krabsetw（header-only ETW 库）、puff（zlib 附带的 deflate 解码器）；yara-x/ 由脚本下载，不进版本库
 installer/        NSIS 安装器脚本、载荷组装和驱动安装/卸载脚本
 scripts/          驱动构建、部署、签名、CAB 打包、发布组装、规则加工和维护脚本
+docs/images/      README 用的界面截图（示例数据）
 ```
 
 `cpp\dist` 是本机生成的部署目录，可能包含真实配置，已被 `.gitignore` 排除，不应该作为源码包分发。

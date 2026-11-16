@@ -50,6 +50,9 @@ qt_add_executable(bulwark_service
     src/AmsiBridge.cpp
     src/IpcServer.cpp
     src/IpcClientAuth.cpp
+    src/MaintenanceGate.cpp
+    include/bulwark/service/MaintenanceGate.h
+    include/bulwark/service/ReleaseSigningKey.h
     src/InstallDirAclCheck.cpp
     src/EtwProcessEventSource.cpp
     src/DriverEventSource.cpp
@@ -102,7 +105,7 @@ target_include_directories(bulwark_service
 target_link_libraries(bulwark_service PRIVATE bulwark_shared Qt6::Core Qt6::Network)
 
 if(WIN32)
-    target_link_libraries(bulwark_service PRIVATE advapi32 kernel32 wintrust crypt32 tdh fltlib ole32 uuid fwpuclnt ws2_32 rstrtmgr psapi iphlpapi)
+    target_link_libraries(bulwark_service PRIVATE advapi32 kernel32 wintrust crypt32 bcrypt tdh fltlib ole32 uuid fwpuclnt ws2_32 rstrtmgr psapi iphlpapi)
 endif()
 
 target_compile_features(bulwark_service PRIVATE cxx_std_20)

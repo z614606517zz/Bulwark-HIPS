@@ -126,6 +126,27 @@ set_tests_properties(file_content_probe_unit PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_blw_qt_bin}"
     LABELS "service;ransomware;policy")
 
+# 卸载程序专用通道:请求方映像必须与基准文件逐字节相同,请求格式不符或核对不过一律拒绝。
+add_executable(maintenance_gate_unit
+    MaintenanceGateTest.cpp
+    "${CMAKE_CURRENT_SOURCE_DIR}/../service/src/MaintenanceGate.cpp")
+target_include_directories(maintenance_gate_unit PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../service/include")
+target_link_libraries(maintenance_gate_unit PRIVATE Qt6::Core Qt6::Network advapi32 bcrypt)
+target_compile_features(maintenance_gate_unit PRIVATE cxx_std_20)
+set_target_properties(maintenance_gate_unit PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+if(MSVC)
+    target_compile_options(maintenance_gate_unit PRIVATE /W4 /WX /permissive- /utf-8)
+    target_compile_definitions(maintenance_gate_unit PRIVATE UNICODE _UNICODE)
+else()
+    target_compile_options(maintenance_gate_unit PRIVATE -Wall -Wextra -Werror)
+endif()
+add_test(NAME maintenance_gate_unit COMMAND maintenance_gate_unit)
+set_tests_properties(maintenance_gate_unit PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_blw_qt_bin}"
+    SKIP_RETURN_CODE 77
+    LABELS "service;selfprotection")
+
 # 内存承载方发现 vs 已归因注入(规则层):按发起方归因的规则不得命中承载方,
 # 专为承载方写的规则必须仍然命中。
 add_executable(memory_carrier_attribution_unit MemoryCarrierAttributionTest.cpp)

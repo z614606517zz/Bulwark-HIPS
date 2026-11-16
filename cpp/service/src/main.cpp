@@ -8,6 +8,8 @@
 #include "bulwark/service/EventHistoryStore.h"
 #include "bulwark/service/IpcServer.h"
 #include "bulwark/service/IpcClientAuth.h"
+#include "bulwark/service/MaintenanceGate.h"
+#include "bulwark/service/ReleaseSigningKey.h"
 #include "bulwark/service/InstallDirAclCheck.h"
 #include "bulwark/service/AlertExporter.h"
 #include "bulwark/service/BaselineStore.h"
@@ -3122,13 +3124,19 @@ static int serviceRun(int argc, char** argv) {
     standByTimer->setSingleShot(true);
     standByTimer->setInterval(kStandByGraceMs);
 
+    // 安装/卸载程序经 MaintenanceGate 请求退出防护时置位。置位期间按「不防护」处理,服务接受停止;
+    // 服务若一直没被停掉(安装或卸载被取消、中途失败),到时自动清除并恢复防护。
+    bool maintenanceHold = false;
+
     auto applyProtectionLifetime =
-        [&settings, &ipc, coordinatorPtr, workerPtr, &audit, &log, standByTimer, &amsiBridge](bool immediate) {
+        [&settings, &ipc, coordinatorPtr, workerPtr, &audit, &log, standByTimer, &amsiBridge,
+         &maintenanceHold](bool immediate) {
             if (!coordinatorPtr || !workerPtr)
                 return;
             const bool uiOnline = ipc.clientCount() > 0;
             const bool want = settings.protectionEnabled
-                && (!settings.protectionFollowsUi || uiOnline);
+                && (!settings.protectionFollowsUi || uiOnline)
+                && !maintenanceHold;
             const bool isSuspended = coordinatorPtr->isSuspended();
             if (want == !isSuspended) {
                 standByTimer->stop();
@@ -3158,6 +3166,9 @@ static int serviceRun(int argc, char** argv) {
 
             const QString detail = want
                 ? QStringLiteral("防护已恢复")
+                : maintenanceHold
+                    ? QStringLiteral("安装/卸载程序请求退出防护 —— 内核驱动已卸载、事件源已停、用户态拦截已放开"
+                                     "(服务若未被停止,3 分钟后自动恢复防护)")
                 : (!settings.protectionEnabled
                        ? QStringLiteral("实时防护总开关已关闭 —— 内核驱动已卸载、事件源已停、用户态拦截已放开")
                        : QStringLiteral("界面已退出 —— 防护已停止(内核驱动已卸载、事件源已停、"
@@ -3186,6 +3197,91 @@ static int serviceRun(int argc, char** argv) {
     });
 
     applyProtectionLifetime(true);
+
+    // 安装/卸载全自动:带界面运行的卸载程序、带发布签名的安装程序请求服务先退出防护。
+    // 请求方由 MaintenanceGate 核对,这里只负责执行和留痕。
+    constexpr int kMaintenanceHoldMs = 3 * 60 * 1000;
+    auto maintenanceTimer = new QTimer(&ipc);
+    maintenanceTimer->setSingleShot(true);
+    maintenanceTimer->setInterval(kMaintenanceHoldMs);
+    QObject::connect(maintenanceTimer, &QTimer::timeout, &ipc,
+                     [&maintenanceHold, applyProtectionLifetime, &log] {
+                         if (!maintenanceHold)
+                             return;
+                         maintenanceHold = false;
+                         log.warning(QStringLiteral("【维护】退出防护已满 3 分钟而服务仍在运行 —— 恢复防护。"));
+                         applyProtectionLifetime(true);
+                     });
+
+    const auto auditMaintenanceRequest = [&audit](const MaintenanceGate::Verdict& v, bool granted) {
+        QJsonObject o;
+        o["timestampUtc"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+        o["type"] = QStringLiteral("MaintenanceStandbyRequest");
+        o["granted"] = granted;
+        o["requester"] = v.requester == MaintenanceGate::Requester::SignedInstaller
+            ? QStringLiteral("installer")
+            : (v.requester == MaintenanceGate::Requester::Uninstaller ? QStringLiteral("uninstaller")
+                                                                      : QStringLiteral("unverified"));
+        o["pid"] = static_cast<qint64>(v.pid);
+        o["sessionId"] = v.sessionId;
+        o["imagePath"] = v.imagePath;
+        o["reason"] = v.reason;
+        audit.writeRecord(o);
+    };
+
+    MaintenanceGate maintenanceGate;
+    bool releaseKeyConfigured = false;
+    {
+        MaintenanceGate::Options gateOptions;
+        const QByteArray releaseKey(reinterpret_cast<const char*>(kReleaseSigningPublicKey),
+                                    static_cast<qsizetype>(sizeof(kReleaseSigningPublicKey)));
+        // 全零表示没有配置发布公钥:只认卸载程序,不为任何安装程序退出防护。
+        releaseKeyConfigured = releaseKey.count('\0') != releaseKey.size();
+        if (releaseKeyConfigured)
+            gateOptions.releasePublicKey = releaseKey;
+        maintenanceGate.setOptions(gateOptions);
+    }
+    maintenanceGate.onStandbyRequested =
+        [&maintenanceHold, maintenanceTimer, applyProtectionLifetime, coordinatorPtr,
+         auditMaintenanceRequest, &log](const MaintenanceGate::Verdict& v) {
+            log.warning(QStringLiteral("【维护】%1请求退出防护,请求方已核对:%2")
+                            .arg(v.requester == MaintenanceGate::Requester::SignedInstaller
+                                     ? QStringLiteral("安装程序")
+                                     : QStringLiteral("卸载程序"),
+                                 v.reason));
+            maintenanceHold = true;
+            maintenanceTimer->start();
+            applyProtectionLifetime(true);
+            const bool standingDown = coordinatorPtr && coordinatorPtr->isSuspended();
+            auditMaintenanceRequest(v, standingDown);
+            return standingDown;
+        };
+    // 任何进程都连得上这条管道,拒绝记录要限量,免得被人拿来灌满日志和审计。
+    int maintenanceRejectsLogged = 0;
+    maintenanceGate.onRejected =
+        [&maintenanceRejectsLogged, auditMaintenanceRequest, &log](const MaintenanceGate::Verdict& v) {
+            constexpr int kMaxLoggedRejects = 50;
+            if (maintenanceRejectsLogged >= kMaxLoggedRejects)
+                return;
+            ++maintenanceRejectsLogged;
+            log.warning(QStringLiteral("【维护】已拒绝退出防护的请求:%1%2")
+                            .arg(v.reason,
+                                 maintenanceRejectsLogged == kMaxLoggedRejects
+                                     ? QStringLiteral("(本次运行内后续拒绝不再逐条记录)")
+                                     : QString()));
+            auditMaintenanceRequest(v, false);
+        };
+    {
+        const QString referenceUninstaller =
+            QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("Uninstall.exe"));
+        if (maintenanceGate.start(MaintenanceGate::pipeName(), referenceUninstaller))
+            log.info(QStringLiteral("安装/卸载通道已监听 %1(卸载程序基准:%2;发布公钥:%3)")
+                         .arg(MaintenanceGate::pipeName(), referenceUninstaller,
+                              releaseKeyConfigured ? QStringLiteral("已配置") : QStringLiteral("未配置")));
+        else
+            log.warning(QStringLiteral("安装/卸载通道监听失败(%1):覆盖安装和卸载前需要先在界面里关闭实时防护。")
+                            .arg(maintenanceGate.errorString()));
+    }
 
     QTimer baselineSaveTimer;
     baselineSaveTimer.setInterval(5 * 60 * 1000);

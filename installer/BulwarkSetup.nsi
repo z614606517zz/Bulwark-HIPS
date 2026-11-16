@@ -233,12 +233,30 @@ Section "主程序与驱动" SEC_MAIN
     ; 解除自身防护(产品自带入口):覆盖已有安装前先卸载内核驱动、停止服务,
     ; 否则自保护会拦截文件覆盖(--prepare-replace 由产品自身进程执行,不受自保护判定)。
     ${If} ${FileExists} "$INSTDIR\bulwark_service.exe"
+        inst_prepare:
+        ; 带界面运行(用户亲手点了「安装」)才请已安装版本的服务退出防护;静默安装(/S)不请求,防护开着就照旧被拒绝。
+        ; 服务只答应带有效发布签名的安装包;自己编译、没有签名的安装包会被拒绝,落到下面的人工指引。
+        ${IfNot} ${Silent}
+            DetailPrint "请已安装版本的后台服务退出防护 ..."
+            Push "BULWARK-INSTALL 1"
+            Call RequestStandby
+            Pop $0
+            ${If} $0 == "OK"
+                DetailPrint "  后台服务已退出防护。"
+            ${ElseIf} $0 == "NOPIPE"
+                DetailPrint "  后台服务没有在运行,或是不带这项功能的旧版本。"
+            ${Else}
+                DetailPrint "  后台服务没有答应($0)。"
+            ${EndIf}
+        ${EndIf}
         DetailPrint "解除自身防护(--prepare-replace) ..."
-        nsExec::ExecToLog '"$INSTDIR\bulwark_service.exe" --prepare-replace'
+        ; 服务的输出是 UTF-8,原样显示在这里是乱码,所以只取返回码。
+        nsExec::ExecToStack '"$INSTDIR\bulwark_service.exe" --prepare-replace'
         Pop $0
+        Pop $R4
         DetailPrint "  --prepare-replace 返回:$0"
         ${If} $0 != 0
-            MessageBox MB_ICONSTOP "旧版本未能安全停止(代码 $0)。安装已中止，避免在驱动或服务仍运行时覆盖文件。"
+            MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "已安装的旧版本没能安全停止(代码 $0),安装先停在这里,还没有覆盖任何文件。$\r$\n$\r$\n如果旧版本的实时防护还开着:请打开${PRODUCT_NAME}的主界面,关闭「实时防护」,再点「重试」。$\r$\n点「取消」放弃本次安装。" IDRETRY inst_prepare
             Abort
         ${EndIf}
     ${EndIf}
@@ -438,16 +456,96 @@ Section "主程序与驱动" SEC_MAIN
 SectionEnd
 
 ; 卸载
+; 安装、卸载全自动:请后台服务先退出防护,这样防护开着时也能一次装完、一次卸完。
+; 服务只认「已提权、在交互会话里」并且映像是下面两种之一的请求方:
+;   · 与安装目录内 Uninstall.exe 逐字节相同 —— 卸载程序,请求行 BULWARK-UNINSTALL 1;
+;   · 带有效的发布签名(installer\scripts\sign-release.ps1)—— 安装包,请求行 BULWARK-INSTALL 1。
+; 别的进程发同样的请求会被拒绝并记入审计。
+; 用法:Push "<请求行>" / Call [un.]RequestStandby / Pop <结果>。
+; 结果:"OK" 服务已退出防护;"NOPIPE" 服务没在运行或版本较旧;
+; 其余(DENY / TIMEOUT / CLOSED / WRITE)表示没成,由调用方走人工指引。
+!ifndef MAINT_PIPE
+!define MAINT_PIPE "\\.\pipe\Bulwark.Maintenance"
+!endif
+!macro BLW_REQUEST_STANDBY UN
+Function ${UN}RequestStandby
+    Exch $5
+    Push $1
+    Push $2
+    Push $3
+    Push $4
+    Push $6
+    StrCpy $6 "NOPIPE"
+    StrCpy $2 "${MAINT_PIPE}"
+    System::Call 'kernel32::CreateFileW(w r2, i 0xC0000000, i 0, p 0, i 3, i 0, p 0) p .r1'
+    ${If} $1 P<> -1
+    ${AndIf} $1 P<> 0
+        StrCpy $6 "WRITE"
+        StrCpy $2 "$5$\n"
+        StrLen $3 $2
+        System::Call 'kernel32::WriteFile(p r1, m r2, i r3, *i .r3, p 0) i .r4'
+        ${If} $4 <> 0
+            StrCpy $6 "TIMEOUT"
+            ; 服务要核对请求方、卸掉内核驱动再答复,平时一两秒;最多等 30 秒,不无限期挂住。
+            ${For} $4 1 300
+                System::Call 'kernel32::PeekNamedPipe(p r1, p 0, i 0, p 0, *i .r3, p 0) i .r2'
+                ${If} $2 = 0
+                    StrCpy $6 "CLOSED"
+                    ${ExitFor}
+                ${EndIf}
+                ${If} $3 > 0
+                    StrCpy $2 ""
+                    System::Call 'kernel32::ReadFile(p r1, m .r2, i 16, *i .r3, p 0)'
+                    StrCpy $6 $2 2
+                    ${If} $6 != "OK"
+                        StrCpy $6 "DENY"
+                    ${EndIf}
+                    ${ExitFor}
+                ${EndIf}
+                Sleep 100
+            ${Next}
+        ${EndIf}
+        System::Call 'kernel32::CloseHandle(p r1)'
+    ${EndIf}
+    StrCpy $5 $6
+    Pop $6
+    Pop $4
+    Pop $3
+    Pop $2
+    Pop $1
+    Exch $5
+FunctionEnd
+!macroend
+!insertmacro BLW_REQUEST_STANDBY ""
+!insertmacro BLW_REQUEST_STANDBY "un."
+
 Section "Uninstall"
     ; 解除自身防护(产品自带入口):卸载内核驱动 + 停止服务
     ; 必须最先做:此后删除文件/停进程/删服务不再被自保护拦截
     ; (--prepare-replace 由产品自身进程执行,不受自保护判定;之后判停的进程都没了)。
+    uninst_prepare:
+    ; 带界面运行(用户亲手点了「卸载」)才请服务退出防护;静默卸载(/S)不请求,防护开着就照旧被拒绝。
+    ${IfNot} ${Silent}
+        DetailPrint "请后台服务退出防护 ..."
+        Push "BULWARK-UNINSTALL 1"
+        Call un.RequestStandby
+        Pop $0
+        ${If} $0 == "OK"
+            DetailPrint "  后台服务已退出防护。"
+        ${ElseIf} $0 == "NOPIPE"
+            DetailPrint "  后台服务没有在运行,或是不带这项功能的旧版本。"
+        ${Else}
+            DetailPrint "  后台服务没有答应($0)。"
+        ${EndIf}
+    ${EndIf}
     DetailPrint "解除自身防护(--prepare-replace) ..."
-    nsExec::ExecToLog '"$INSTDIR\bulwark_service.exe" --prepare-replace'
+    ; 服务的输出是 UTF-8,原样显示在这里是乱码,所以只取返回码。
+    nsExec::ExecToStack '"$INSTDIR\bulwark_service.exe" --prepare-replace'
     Pop $0
+    Pop $R4
     DetailPrint "  --prepare-replace 返回:$0"
     ${If} $0 != 0
-        MessageBox MB_ICONSTOP "自我保护或内核驱动未能安全停止(代码 $0)。卸载已中止。"
+        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "后台服务或内核驱动没能安全停止(代码 $0),卸载先停在这里,已安装的程序没有被改动。$\r$\n$\r$\n如果实时防护还开着:请打开${PRODUCT_NAME}的主界面,关闭「实时防护」,再点「重试」。$\r$\n点「取消」放弃本次卸载。" IDRETRY uninst_prepare
         Abort
     ${EndIf}
 

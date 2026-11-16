@@ -60,8 +60,6 @@ public:
     
     void manualQuarantine(const QString& path);
     QUuid forceHandle(const bulwark::ipc::RemediationSkippedItem& item);
-    void intelRefresh(bool previewOnly);
-    void intelApply(const QList<bulwark::DefenseRule>& rules);
     void aiGenerateRules(const QString& request);
 
     AiScanner* aiScanner() const { return m_ai; }
@@ -93,7 +91,6 @@ signals:
     void processActionResult(const bulwark::ipc::ProcessActionResultPayload& result);
     void systemBoostReceived(const bulwark::ipc::SystemBoostResultPayload& result);
     void netTrafficReceived(const bulwark::ipc::NetTrafficSnapshotPayload& snapshot);
-    void intelResult(const bulwark::ipc::IntelRefreshResultPayload& result);
     void aiRulesSuggested(const QList<AiSuggestedRule>& rules);
 
 private slots:

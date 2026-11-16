@@ -237,10 +237,6 @@ void IpcClient::dispatch(const QString& line)
     case IpcMessageType::NetTrafficSnapshot:
         emit netTrafficReceived(msg->payloadAs<NetTrafficSnapshotPayload>());
         break;
-    case IpcMessageType::IntelRefreshResponse:
-    case IpcMessageType::IntelApplyResponse:
-        emit intelResult(msg->payloadAs<IntelRefreshResultPayload>());
-        break;
     default:
         break;
     }
@@ -431,20 +427,6 @@ QUuid IpcClient::requestSystemBoost()
     SystemBoostRequestPayload p;
     send(IpcMessage::from(IpcMessageType::SystemBoostRequest, p));
     return p.requestId;
-}
-
-void IpcClient::intelRefresh(bool previewOnly)
-{
-    IntelRefreshRequestPayload p;
-    p.previewOnly = previewOnly;
-    send(IpcMessage::from(IpcMessageType::IntelRefreshRequest, p));
-}
-
-void IpcClient::intelApply(const QList<bulwark::DefenseRule>& rules)
-{
-    IntelApplyRequestPayload p;
-    p.rules = rules;
-    send(IpcMessage::from(IpcMessageType::IntelApplyRequest, p));
 }
 
 void IpcClient::aiGenerateRules(const QString& request)

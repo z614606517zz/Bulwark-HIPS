@@ -646,7 +646,6 @@ QWidget* pages::rules(IpcClient* ipc)
 
     QHBoxLayout* actions = pagekit::headerActions(page);
     auto* aiBtn = pagekit::headerButton(actions, QStringLiteral("sparkles"), u("AI 生成"));
-    auto* intelBtn = pagekit::headerButton(actions, QStringLiteral("cloud"), u("情报刷新"));
     auto* addBtn = pagekit::headerButton(actions, QStringLiteral("plus"), u("新增规则"), "primary");
     QMenu* more = pagekit::headerMenu(actions);
     const auto reload = [page, ipc] {
@@ -657,47 +656,6 @@ QWidget* pages::rules(IpcClient* ipc)
     };
     pagekit::menuAction(more, QStringLiteral("refresh"), u("刷新列表"), page, reload);
     QObject::connect(addBtn, &QPushButton::clicked, page, openBuilder);
-
-    enum class Intel { Idle, Preview, Apply };
-    auto intel = std::make_shared<Intel>(Intel::Idle);
-    QObject::connect(intelBtn, &QPushButton::clicked, page, [page, ipc, intel] {
-        if (!ipc->isConnected()) {
-            ui::notify(page, ui::Tone::Danger, u("未连接后台服务,无法刷新威胁情报。"));
-            return;
-        }
-        *intel = Intel::Preview;
-        ui::notify(page, ui::Tone::Info, u("正在从 ThreatFox 拉取最新 IOC,生成候选规则…"));
-        ipc->intelRefresh(true);
-    });
-    QObject::connect(ipc, &IpcClient::intelResult, page, [page, ipc, intel](const bulwark::ipc::IntelRefreshResultPayload& r) {
-        if (*intel == Intel::Idle)
-            return;
-        if (*intel == Intel::Preview && !r.generatedRules.isEmpty()) {
-            *intel = Intel::Idle;
-            QList<AdoptRow> rows;
-            for (const DefenseRule& dr : r.generatedRules)
-                rows << AdoptRow{ruleSentence(dr), actorSpec(dr) + (dr.note.isEmpty() ? QString() : u(" · ") + dr.note)};
-            const QList<int> sel = adopt(page, QStringLiteral("cloud"), identity::settingsSection(QStringLiteral("intel")), u("采纳情报规则"),
-                                         u("从 ThreatFox 拉取 %1 条 IOC,生成 %2 条候选规则。勾选要采纳的:")
-                                             .arg(r.iocCount)
-                                             .arg(r.generatedRules.size()),
-                                         rows);
-            if (sel.isEmpty())
-                return;
-            QList<DefenseRule> chosen;
-            for (int i : sel)
-                chosen << r.generatedRules[i];
-            *intel = Intel::Apply;
-            ipc->intelApply(chosen);
-            return;
-        }
-        const bool apply = *intel == Intel::Apply;
-        *intel = Intel::Idle;
-        const QString msg = !r.message.isEmpty() ? r.message
-                            : apply              ? u("已采纳 %1 条情报规则。").arg(r.rulesApplied)
-                                                 : u("没有新的候选规则。");
-        ui::notify(page, !r.success ? ui::Tone::Danger : (apply ? ui::Tone::Success : ui::Tone::Info), msg);
-    });
 
     auto aiPending = std::make_shared<bool>(false);
     QObject::connect(aiBtn, &QPushButton::clicked, page, [page, ipc, aiPending] {

@@ -261,8 +261,17 @@ Section "主程序与驱动" SEC_MAIN
             ; 仍被映射:清掉历史让位文件(没被占用时可删,含手工让位留下的带时间戳副本),
             ; 再改名腾出文件名
             Delete "$INSTDIR\BulwarkAmsi.dll.old*"
-            Rename "$INSTDIR\BulwarkAmsi.dll" "$INSTDIR\BulwarkAmsi.dll.old"
-            Delete /REBOOTOK "$INSTDIR\BulwarkAmsi.dll.old"
+            ; 上一次让位留下的 .old 可能还被别的进程映射着(上面删不掉),名字被占时 Rename 会失败,
+            ; 所以换一个空着的名字(.old2、.old3 …);这些副本不再被占用后,下次安装由上面的 Delete 清掉。
+            StrCpy $R5 "$INSTDIR\BulwarkAmsi.dll.old"
+            ${For} $R6 2 99
+                ${IfNot} ${FileExists} "$R5"
+                    ${ExitFor}
+                ${EndIf}
+                StrCpy $R5 "$INSTDIR\BulwarkAmsi.dll.old$R6"
+            ${Next}
+            Rename "$INSTDIR\BulwarkAmsi.dll" "$R5"
+            Delete /REBOOTOK "$R5"
             ${If} ${FileExists} "$INSTDIR\BulwarkAmsi.dll"
                 MessageBox MB_ICONSTOP "旧的 BulwarkAmsi.dll 正被其他进程占用且无法让位,安装已中止。$\r$\n请重启电脑后重新安装。"
                 Abort
@@ -317,6 +326,17 @@ Section "主程序与驱动" SEC_MAIN
     nsExec::ExecToLog '"${SYSNATIVE}\fltmc.exe" unload Bulwark'
     Pop $0
     DetailPrint "  fltmc unload 返回:$0"
+
+    ; 卸载程序必须趁驱动下线时写:服务一连上驱动,安装目录就进入内核自保护(SelfGuard),只放行本产品自身进程写入,
+    ; 安装程序此后再写 Uninstall.exe 会被拒绝,而 WriteUninstaller 失败不会自行中止安装。
+    DetailPrint "写入卸载程序 ..."
+    ClearErrors
+    WriteUninstaller "$INSTDIR\Uninstall.exe"
+    ${If} ${Errors}
+    ${OrIfNot} ${FileExists} "$INSTDIR\Uninstall.exe"
+        MessageBox MB_ICONSTOP "卸载程序写入失败($INSTDIR\Uninstall.exe)。安装已中止。$\r$\n$\r$\n最常见的原因是内核驱动仍在运行并保护着安装目录。$\r$\n请重启电脑后重新安装。"
+        Abort
+    ${EndIf}
 
     ; 清理残留服务注册并全新注册
     ; 服务的 IPC 准入按「服务二进制自身目录」判定(installDir = applicationDirPath),
@@ -398,8 +418,6 @@ Section "主程序与驱动" SEC_MAIN
     WriteRegDWORD HKLM "${PRODUCT_UNINST_KEY}" "NoModify" 1
     WriteRegDWORD HKLM "${PRODUCT_UNINST_KEY}" "NoRepair" 1
     SetRegView 32
-
-    WriteUninstaller "$INSTDIR\Uninstall.exe"
 
     ; 完成提示分三种情形:「本次刚开启」与「本机原本就开着」要分开,
     ; 后者测试模式早已生效,驱动此刻就能加载,不该再要求重启。

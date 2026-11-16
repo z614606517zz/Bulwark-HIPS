@@ -123,7 +123,8 @@ QList<TrustedApp> builtinApps()
                   {"Meituan", "Beijing Meituan", "Dianping", "Sankuai"},
                   "覆盖 美团/大众点评 等");
     s << mkVendor("ven-xiaomi", "小米 / 金山办公生态", "小米", "厂商",
-                  {"Xiaomi", "Beijing Xiaomi", "Xiaomi Communications", "Mi Phone"},
+                  {"Xiaomi", "Beijing Xiaomi", "Xiaomi Communications", "Mi Phone",
+                   "北京小米智能科技有限公司", "小米科技有限责任公司"},
                   "覆盖 小米助手/MIUI 相关 等");
     s << mkVendor("ven-huawei", "华为系列", "华为", "厂商",
                   {"Huawei", "Huawei Technologies", "Huawei Device", "Honor"},
@@ -366,7 +367,7 @@ QList<TrustedApp> builtinApps()
             {"JetBrains"});
     s << mk("bin-git", "Git for Windows", "Git", "开发",
             {"git.exe", "git-bash.exe", "git-gui.exe"},
-            {"The Git", "Git for Windows", "Software Freedom Conservancy"});
+            {"The Git", "Git for Windows", "Software Freedom Conservancy", "Johannes Schindelin"});
     s << mk("bin-node", "Node.js", "OpenJS", "开发",
             {"node.exe", "npm.exe", "npx.exe"}, {"OpenJS", "Node.js"});
     s << mk("bin-python", "Python", "Python Software Foundation", "开发",
@@ -545,7 +546,7 @@ QList<TrustedApp> builtinApps()
             {"thunder.exe", "thunderplatform.exe"}, {"Thunder", "Xunlei", "深圳市迅雷"});
     s << mk("bin-toDesk", "ToDesk / 向日葵 / AnyDesk", "远程协助", "远程",
             {"todesk.exe", "sunloginclient.exe", "anydesk.exe"},
-            {"ToDesk", "Sunlogin", "Oray", "AnyDesk"});
+            {"ToDesk", "Sunlogin", "Oray", "AnyDesk", "Hainan YouQu Technology"});
     s << mk("bin-teamviewer", "TeamViewer", "TeamViewer", "远程",
             {"teamviewer.exe", "teamviewer_service.exe"}, {"TeamViewer"});
     s << mk("bin-remote-desktop", "Windows 远程桌面 / 向日葵(官方)", "Microsoft/Oray", "远程",
@@ -560,7 +561,8 @@ QList<TrustedApp> builtinApps()
             {"dida.exe", "yinxiang.exe"}, {"Dida", "Evernote", "Yinxiang"});
     s << mk("bin-bluestacks", "模拟器(雷电/夜神/MuMu)", "模拟器", "其他",
             {"ldplayer.exe", "nox.exe", "mumu.exe", "nemu.exe"},
-            {"Ldplayer", "Nox", "Netease", "MuMu"});
+            {"Ldplayer", "Nox", "Netease", "MuMu", "JUST OKAY LIMITED",
+             "Shanghai Changzhi Network Technology"});
     s << mk("bin-steam", "Steam", "Valve", "游戏",
             {"steam.exe", "steamservice.exe", "steamwebhelper.exe"}, {"Valve"});
     s << mk("bin-epic", "Epic Games", "Epic", "游戏",
@@ -830,6 +832,252 @@ QList<TrustedApp> builtinApps()
             {"CFCA", "China Financial Certification", "中国金融认证中心"});
     s << mk("bin-guanjiapo", "管家婆 / 速达", "进销存", "金融",
             {"gjp.exe", "superdata.exe"}, {"Rendong", "任我行", "Superdata", "速达"});
+
+    // 签名主体按词边界比对:中文主体前后没有分隔符,必须写证书上的公司全称,写简称不会命中。
+    s << mkVendor("ven-kaspersky", "卡巴斯基系列", "Kaspersky", "厂商",
+                  {"AO Kaspersky Lab", "Kaspersky Lab", "Kaspersky Labs"},
+                  "覆盖 卡巴斯基各版本的服务/界面/升级组件");
+    s << mkVendor("ven-av-intl", "国际杀毒厂商", "杀毒软件", "厂商",
+                  {"ESET, spol", "Bitdefender", "Avast Software", "AVG Technologies",
+                   "Avira Operations", "Gen Digital", "NortonLifeLock", "Symantec Corporation",
+                   "McAfee, LLC", "McAfee, Inc", "Trend Micro", "F-Secure Corporation",
+                   "WithSecure", "Sophos Ltd", "Sophos Limited", "Malwarebytes",
+                   "Panda Security", "Doctor Web", "Webroot", "G DATA CyberDefense",
+                   "G DATA Software", "Comodo Security Solutions", "Emsisoft",
+                   "Check Point Software Technologies"},
+                  "覆盖 ESET/Bitdefender/Avast/AVG/Avira/Norton/McAfee/趋势科技/F-Secure/Sophos 等的后台组件");
+    s << mkVendor("ven-endpoint-enterprise", "企业终端安全与接入客户端", "企业安全", "厂商",
+                  {"CrowdStrike", "Sentinel Labs", "SentinelOne", "Palo Alto Networks", "Fortinet",
+                   "Zscaler", "Citrix Systems", "Ivanti", "Pulse Secure", "Netskope",
+                   "Sangfor Technologies"},
+                  "覆盖 CrowdStrike/SentinelOne/Cortex XDR/FortiClient/Zscaler/Citrix Workspace/深信服 等");
+    s << mkVendor("ven-acer", "宏碁系列", "宏碁", "厂商",
+                  {"Acer Incorporated"},
+                  "覆盖 Acer Care Center/Quick Access/PredatorSense 等");
+    s << mkVendor("ven-msi", "微星系列", "微星", "厂商",
+                  {"Micro-Star International"},
+                  "覆盖 MSI Center/Dragon Center/Live Update 等");
+    s << mkVendor("ven-gigabyte-asrock", "技嘉 / 华擎", "技嘉/华擎", "厂商",
+                  {"GIGA-BYTE TECHNOLOGY", "ASRock Incorporation"},
+                  "覆盖 GIGABYTE Control Center/App Center/RGB Fusion/ASRock Polychrome 等");
+    s << mkVendor("ven-corsair-steelseries", "海盗船 / 赛睿 外设", "海盗船/赛睿", "厂商",
+                  {"Corsair Memory", "Corsair Components", "SteelSeries ApS"},
+                  "覆盖 iCUE/Elgato Stream Deck/SteelSeries GG 等");
+    s << mkVendor("ven-storage", "存储厂商(西数 / 希捷 / 金士顿 / 闪迪 / 英睿达)", "存储", "厂商",
+                  {"Western Digital Technologies", "Seagate Technology", "Kingston Technology",
+                   "SanDisk", "Micron Technology"},
+                  "覆盖 WD Dashboard/SeaTools/Kingston SSD Manager/Crucial Storage Executive 等");
+    s << mkVendor("ven-printers", "打印机 / 扫描仪厂商", "打印设备", "厂商",
+                  {"Canon Inc", "SEIKO EPSON", "Brother Industries", "Xerox Corporation",
+                   "KYOCERA Document Solutions", "RICOH COMPANY", "Lexmark International",
+                   "FUJIFILM Business Innovation", "KONICA MINOLTA", "Zhuhai Pantum"},
+                  "覆盖 佳能/爱普生/兄弟/施乐/京瓷/理光/利盟/富士胶片/柯尼卡美能达/奔图 的驱动与状态监视器");
+    s << mkVendor("ven-input-devices", "触控板 / 指纹 / 数位板", "输入设备", "厂商",
+                  {"Synaptics Incorporated", "ELAN Microelectronics", "Shenzhen Goodix", "Wacom Co",
+                   "Wacom Technology"},
+                  "覆盖 Synaptics/ELAN/汇顶 驱动与 Wacom 数位板服务");
+    s << mkVendor("ven-chipsets", "高通 / 联发科 / 博通", "芯片驱动", "厂商",
+                  {"Qualcomm Technologies", "Qualcomm Atheros", "MediaTek Inc", "Broadcom Inc",
+                   "Broadcom Corporation"},
+                  "覆盖 无线网卡/蓝牙驱动的后台服务");
+    s << mkVendor("ven-audio-fx", "音效组件(杜比 / DTS / Nahimic / Waves / 创新)", "音效", "厂商",
+                  {"Dolby Laboratories", "DTS, Inc", "A-Volute", "Nahimic", "Waves Audio",
+                   "Creative Technology"},
+                  "覆盖 Dolby Access/DTS Sound Unbound/Nahimic/MaxxAudio/Sound Blaster 等");
+    s << mkVendor("ven-sony", "索尼系列", "索尼", "厂商",
+                  {"Sony Corporation", "Sony Group Corporation", "Sony Interactive Entertainment",
+                   "Sony Electronics"},
+                  "覆盖 PlayStation 配件/Imaging Edge/耳机连接 等");
+    s << mkVendor("ven-phone-oem", "OPPO / vivo / 荣耀 / 一加", "手机厂商", "厂商",
+                  {"Guangdong OPPO Mobile", "vivo Mobile Communication", "Honor Device",
+                   "OnePlus Technology"},
+                  "覆盖 手机助手/互传/多屏协同 等");
+    s << mkVendor("ven-network-devices", "网络与安防设备(TP-Link / 海康 / 大华 / 网件 / UniFi)", "网络设备", "厂商",
+                  {"TP-Link", "Hikvision", "Dahua Technology", "NETGEAR", "Ubiquiti"},
+                  "覆盖 路由器管理工具/iVMS-4200/SmartPSS/监控客户端 等");
+    s << mkVendor("ven-banks", "各大银行网银组件", "银行", "厂商",
+                  {"Industrial and Commercial Bank of China", "China Construction Bank",
+                   "Agricultural Bank of China", "Bank of China", "Bank of Communications",
+                   "China Merchants Bank", "Postal Savings Bank of China", "China CITIC Bank",
+                   "Shanghai Pudong Development Bank", "China Minsheng Banking", "Ping An Bank",
+                   "China Everbright Bank", "Hua Xia Bank", "China UnionPay"},
+                  "覆盖 网银助手/安全控件/U盾管理工具");
+    s << mkVendor("ven-ukey", "U盾 / 数字证书中间件", "U盾", "厂商",
+                  {"Feitian Technologies", "WatchData", "Tendyron"},
+                  "覆盖 飞天诚信/握奇/天地融 的 U盾驱动与证书工具");
+    s << mkVendor("ven-game-intl", "海外游戏厂商", "游戏厂商", "厂商",
+                  {"Rockstar Games", "Take-Two Interactive", "ZeniMax Media", "Bethesda Softworks",
+                   "CD PROJEKT", "Paradox Interactive", "Wargaming", "Roblox Corporation", "Mojang",
+                   "SQUARE ENIX", "CAPCOM", "BANDAI NAMCO", "SEGA", "KRAFTON", "NEXON", "NCSOFT",
+                   "Garena Online", "Gaijin", "Grinding Gear Games", "Digital Extremes",
+                   "Pearl Abyss", "Smilegate"},
+                  "覆盖 Rockstar/2K/Bethesda/CDPR/Wargaming/Roblox/Minecraft/Square Enix/Capcom 等的启动器与游戏");
+    s << mkVendor("ven-game-cn", "国内游戏厂商", "游戏厂商", "厂商",
+                  {"Hypergryph", "Kuro Technology", "Xishanju", "Zhuhai Seasun",
+                   "Shengqu Information Technology", "Giant Network", "X.D. Network", "NetDragon"},
+                  "覆盖 鹰角/库洛/西山居/盛趣/巨人/心动/网龙 的启动器与游戏");
+    s << mkVendor("ven-live-cn", "斗鱼 / 虎牙", "直播平台", "厂商",
+                  {"Wuhan Douyu Network", "Guangzhou Huya Information"},
+                  "覆盖 斗鱼直播/直播伴侣/虎牙直播 等");
+    s << mkVendor("ven-cae-eda", "工程仿真 / EDA 厂商", "工程软件", "厂商",
+                  {"ANSYS, Inc", "ANSYS Inc", "COMSOL AB", "Cadence Design Systems", "Synopsys, Inc",
+                   "Altium", "Bentley Systems", "PTC Inc", "Siemens Industry Software",
+                   "Siemens Product Lifecycle Management", "Glodon"},
+                  "覆盖 ANSYS/COMSOL/Cadence/Synopsys/Altium Designer/MicroStation/Creo/NX/广联达 等");
+    s << mkVendor("ven-stardock", "Stardock 桌面工具", "Stardock", "厂商",
+                  {"Stardock Corporation", "Stardock Systems"},
+                  "覆盖 Start11/Fences/Groupy/DeskScapes 等");
+
+    s << mk("bin-arc", "Arc 浏览器", "The Browser Company", "浏览器",
+            {"arc.exe"}, {"The Browser Company"});
+    s << mk("bin-ddg-waterfox", "DuckDuckGo / Waterfox", "DuckDuckGo/Waterfox", "浏览器",
+            {"duckduckgo.exe", "waterfox.exe"}, {"Duck Duck Go", "BrowserWorks", "Waterfox"});
+
+    s << mk("bin-ai-chat", "AI 助手(ChatGPT / Claude / Cherry Studio / AnythingLLM)", "AI 助手", "办公",
+            {"chatgpt.exe", "claude.exe", "cherry studio.exe", "anythingllm.exe"},
+            {"OpenAI", "Anthropic", "上海千彗科技有限公司", "Mintplex Labs"});
+    s << mk("bin-pdf-pro", "PDF-XChange / Nitro PDF / ABBYY FineReader", "PDF 工具", "办公",
+            {"pdfxedit.exe", "pdfxcview.exe", "nitropdf.exe", "finereader.exe"},
+            {"Tracker Software", "PDF-XChange", "Nitro Software", "Nitro PDF", "ABBYY"});
+    s << mk("bin-deepl", "DeepL 翻译", "DeepL", "办公",
+            {"deepl.exe"}, {"DeepL SE", "DeepL GmbH"});
+    s << mk("bin-todoist", "Todoist", "Doist", "办公",
+            {"todoist.exe"}, {"Doist"});
+    s << mk("bin-diagram", "draw.io / Miro", "JGraph/Miro", "办公",
+            {"draw.io.exe", "miro.exe"}, {"JGraph", "RealtimeBoard", "Miro"});
+    s << mk("bin-mail-niche", "eM Client / Mailbird", "邮件客户端", "办公",
+            {"mailclient.exe", "mailbird.exe"}, {"eM Client", "Mailbird"});
+    s << mk("bin-kindle", "Kindle / Send to Kindle", "Amazon", "办公",
+            {"kindle.exe", "sendtokindle.exe"},
+            {"Amazon.com Services", "Amazon Services", "Amazon.com, Inc"});
+    s << mk("bin-tableau", "Tableau", "Salesforce", "办公",
+            {"tableau.exe", "tabprotosrv.exe"}, {"Tableau Software", "Salesforce"});
+
+    s << mk("bin-viber-wire", "Viber / Wire", "Viber/Wire", "即时通讯",
+            {"viber.exe", "wire.exe"}, {"Viber Media", "Wire Swiss"});
+    s << mk("bin-team-chat", "Mattermost / Rocket.Chat / Zulip", "团队协作", "即时通讯",
+            {"mattermost.exe", "rocket.chat.exe", "zulip.exe"},
+            {"Mattermost", "Rocket.Chat", "Kandra Labs"});
+
+    s << mk("bin-ai-ide", "AI 编程工具(Trae / Windsurf / Devin / Kiro / OpenCode / Zed)", "AI 编程", "开发",
+            {"trae.exe", "trae cn.exe", "windsurf.exe", "devin.exe", "kiro.exe", "opencode.exe",
+             "opencode-cli.exe", "zed.exe"},
+            {"北京引力弹弓科技有限公司", "SPRING (SG) PTE", "Exafunction", "Amazon.com, Inc",
+             "Amazon Web Services", "Anomaly Innovations", "Zed Industries"});
+    s << mk("bin-local-llm", "本地大模型(Ollama / LM Studio)", "本地模型", "开发",
+            {"ollama.exe", "ollama app.exe", "llama-server.exe", "lm studio.exe"},
+            {"Ollama Inc", "Element Labs"});
+    s << mk("bin-cmake-qt", "CMake / Qt Creator", "Kitware/Qt", "开发",
+            {"cmake.exe", "cmake-gui.exe", "qtcreator.exe"}, {"Kitware", "The Qt Company"});
+    s << mk("bin-gh-cli", "GitHub CLI / Git LFS", "GitHub", "开发",
+            {"gh.exe", "git-lfs.exe"}, {"GitHub, Inc"});
+    s << mk("bin-db-gui", "MongoDB Compass / TablePlus", "数据库工具", "开发",
+            {"mongodbcompass.exe", "tableplus.exe"}, {"MongoDB", "TablePlus"});
+    s << mk("bin-k8s-gui", "Lens / Rancher Desktop / Podman Desktop", "容器工具", "开发",
+            {"lens.exe", "rancher desktop.exe", "podman desktop.exe"},
+            {"Mirantis", "SUSE LLC", "Red Hat"});
+    s << mk("bin-hashicorp", "Vagrant / Terraform / Packer", "HashiCorp", "开发",
+            {"vagrant.exe", "terraform.exe", "packer.exe"}, {"HashiCorp"});
+    s << mk("bin-remote-mgr", "Termius / Royal TS / Remote Desktop Manager", "连接管理", "开发",
+            {"termius.exe", "royalts.exe", "remotedesktopmanager.exe", "remotedesktopmanager64.exe"},
+            {"Termius", "Royal Apps", "Devolutions"});
+    s << mk("bin-hex-editors", "010 Editor / HxD", "十六进制编辑", "开发",
+            {"010editor.exe", "hxd.exe", "hxd64.exe", "hxd32.exe"},
+            {"SweetScape", "Maël Hörz", "Mael Horz"});
+
+    s << mk("bin-winzip", "WinZip", "WinZip", "压缩",
+            {"winzip64.exe", "winzip32.exe", "winzip.exe"},
+            {"WinZip Computing", "Corel Corporation", "Cascade Parent", "Alludo"});
+
+    s << mk("bin-cloud-intl", "pCloud / MEGA / Box", "网盘", "传输",
+            {"pcloud.exe", "megasync.exe", "box.exe"}, {"pCloud", "Mega Limited", "Box, Inc"});
+    s << mk("bin-selfhost-sync", "Nextcloud / ownCloud / Resilio Sync", "同步盘", "传输",
+            {"nextcloud.exe", "owncloud.exe", "resilio sync.exe"},
+            {"Nextcloud GmbH", "ownCloud GmbH", "Resilio"});
+    s << mk("bin-lan-share", "LocalSend / AirDroid", "跨设备传输", "传输",
+            {"localsend_app.exe", "airdroid.exe"}, {"Tien Do Nam", "SAND STUDIO"});
+    s << mk("bin-cyberduck", "Cyberduck / Mountain Duck", "iterate", "传输",
+            {"cyberduck.exe", "mountain duck.exe"}, {"iterate GmbH"});
+
+    s << mk("bin-plex", "Plex", "Plex", "媒体",
+            {"plex.exe", "plex media server.exe", "plexamp.exe"}, {"Plex, Inc", "Plex Inc"});
+    s << mk("bin-music-intl", "TIDAL / Amazon Music / Deezer", "流媒体音乐", "媒体",
+            {"tidal.exe", "amazon music.exe", "deezer.exe"},
+            {"TIDAL Music", "Amazon.com Services", "Deezer"});
+    s << mk("bin-live-tools", "Streamlabs / XSplit / vMix", "直播推流", "媒体",
+            {"streamlabs obs.exe", "streamlabs desktop.exe", "xsplit.core.exe", "vmix64.exe",
+             "vmix.exe"},
+            {"Streamlabs", "General Workings", "SplitmediaLabs", "StudioCoast"});
+    s << mk("bin-voicemeeter", "Voicemeeter", "VB-Audio", "媒体",
+            {"voicemeeter.exe", "voicemeeterpro.exe", "voicemeeter8.exe", "voicemeeter8x64.exe"},
+            {"Vincent Burel", "VB-Audio"});
+    s << mk("bin-photo-pro", "Topaz Photo AI / Video AI / Capture One", "影像后期", "媒体",
+            {"topaz photo ai.exe", "topaz video ai.exe", "topaz gigapixel ai.exe", "captureone.exe"},
+            {"Topaz Labs", "Capture One"});
+    s << mk("bin-design-proto", "Canva / Axure RP", "设计原型", "媒体",
+            {"canva.exe", "axurerp9.exe", "axurerp10.exe", "axurerp11.exe"},
+            {"Canva", "Axure Software"});
+    s << mk("bin-3d-dcc", "ZBrush / Houdini / Rhino", "三维制作", "媒体",
+            {"zbrush.exe", "houdini.exe", "houdinifx.exe", "rhino.exe"},
+            {"Pixologic", "Maxon", "Side Effects Software", "Robert McNeel"});
+    s << mk("bin-corel", "CorelDRAW / 会声会影", "Corel", "媒体",
+            {"coreldrw.exe", "corelpp.exe", "vstudio.exe"},
+            {"Corel Corporation", "Cascade Parent", "Alludo"});
+
+    s << mk("bin-pwmgr-cloud", "密码管理器(Dashlane / LastPass / Enpass / Proton Pass)", "密码管理", "安全",
+            {"dashlane.exe", "lastpass.exe", "enpass.exe", "protonpass.exe"},
+            {"Dashlane", "LastPass", "Enpass Technologies", "Proton AG"});
+    s << mk("bin-piriform", "Speccy / Recuva / Defraggler", "Piriform", "安全",
+            {"speccy.exe", "speccy64.exe", "recuva.exe", "recuva64.exe", "defraggler.exe",
+             "defraggler64.exe"},
+            {"Piriform", "Gen Digital"});
+    s << mk("bin-revo", "Revo Uninstaller", "VS Revo Group", "安全",
+            {"revounin.exe", "revouninpro.exe"}, {"VS Revo Group"});
+    s << mk("bin-net-monitor", "GlassWire / NetLimiter", "流量监控", "安全",
+            {"glasswire.exe", "gwctlsrv.exe", "nlclientapp.exe", "nlsvc.exe"},
+            {"SecureMix", "GlassWire", "Locktime Software"});
+
+    s << mk("bin-anticheat", "反作弊组件(EasyAntiCheat / BattlEye)", "反作弊", "游戏",
+            {"easyanticheat.exe", "easyanticheat_eos.exe", "beservice.exe", "beservice_x64.exe"},
+            {"EasyAntiCheat", "Epic Games", "BattlEye"});
+    s << mk("bin-overwolf", "Overwolf / CurseForge", "Overwolf", "游戏",
+            {"overwolf.exe", "overwolfbrowser.exe", "curseforge.exe"}, {"Overwolf"});
+    s << mk("bin-vortex", "Vortex Mod 管理器", "Nexus Mods", "游戏",
+            {"vortex.exe"}, {"Black Tree Gaming"});
+
+    s << mk("bin-futu", "富途牛牛", "富途", "金融",
+            {"ftnn.exe"}, {"Futu Network Technology", "Futu Securities"});
+    s << mk("bin-trading-intl", "TradingView / MetaTrader", "行情交易", "金融",
+            {"tradingview.exe", "terminal64.exe", "metaeditor64.exe"},
+            {"TradingView", "MetaQuotes"});
+
+    s << mk("bin-cooling-ctl", "NZXT CAM / Cooler Master MasterPlus", "散热控制", "硬件",
+            {"nzxt cam.exe", "masterplus.exe"}, {"NZXT", "Cooler Master"});
+
+    s << mk("bin-stats", "SAS / Minitab / JMP / Maple", "统计与数学", "工程",
+            {"sas.exe", "mtb.exe", "jmp.exe", "maplew.exe"},
+            {"SAS Institute", "Minitab", "JMP Statistical Discovery", "Maplesoft", "Waterloo Maple"});
+    s << mk("bin-slicers", "3D 打印切片(Cura / PrusaSlicer / Bambu Studio)", "3D 打印", "工程",
+            {"ultimaker-cura.exe", "cura.exe", "prusa-slicer.exe", "bambu-studio.exe"},
+            {"Ultimaker", "Prusa Research", "Shenzhen Tuozhu Technology", "Bambulab", "Bambu Lab"});
+
+    s << mk("bin-edu-board", "希沃白板 / ClassIn", "在线教学", "其他",
+            {"easinote.exe", "classin.exe"}, {"Guangzhou Shirui Electronics", "EEO Education"});
+    s << mk("bin-wallpaper", "Wallpaper Engine / Lively Wallpaper", "动态壁纸", "其他",
+            {"wallpaper32.exe", "wallpaper64.exe", "lively.exe"},
+            {"Skutta", "Wallpaper Engine", "Dani John"});
+    s << mk("bin-backup-pro", "Acronis True Image / Veeam Agent", "备份", "其他",
+            {"trueimage.exe", "trueimagemonitor.exe", "veeam.endpoint.tray.exe",
+             "veeam.endpoint.service.exe"},
+            {"Acronis International", "Veeam Software"});
+    s << mk("bin-teracopy", "TeraCopy", "Code Sector", "其他",
+            {"teracopy.exe"}, {"Code Sector"});
+    s << mk("bin-bluestacks-app", "BlueStacks 模拟器", "BlueStacks", "其他",
+            {"hd-player.exe", "bluestacks.exe", "bluestacksservices.exe", "bluestacks x.exe"},
+            {"BlueStack Systems", "now.gg"});
+    s << mk("bin-ldplayer9", "雷电模拟器 9 组件", "雷电", "其他",
+            {"dnplayer.exe", "ld9boxheadless.exe", "ld9boxsvc.exe"},
+            {"JUST OKAY LIMITED", "Shanghai Changzhi Network Technology"});
     return s;
 
 }

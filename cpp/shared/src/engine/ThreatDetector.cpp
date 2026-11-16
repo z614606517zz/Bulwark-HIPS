@@ -458,13 +458,43 @@ void commandLineSignals(const SecurityEvent& e, Scorer& sc) {
     QStringList texts{ e.commandLine.toLower() };
     if (!e.normalizedCommandLine.isEmpty())
         texts << e.normalizedCommandLine.toLower();
+    // 特征词里的 "net stop"、"sc config" 同样是单空格字面量,规整形态也要扫一遍。
+    const int firstCanonical = texts.size();
+    for (const QString& form : e.canonicalCommandLines)
+        texts << form.toLower();
+    const int firstDecoded = texts.size();
     for (const QString& block : e.decodedCommandBlocks)
         texts << block.toLower();
 
+    QVector<QVector<CommandLineAnalyzer::Hit>> hitsPerText;
+    hitsPerText.reserve(texts.size());
+    for (const QString& t : texts)
+        hitsPerText.append(CommandLineAnalyzer::scan(t, actor));
+
+    // 原文和它的规整形态是同一条命令的几种写法。scan 的「同族强信号命中后弱信号让位」只在单段文本内生效:
+    // `wevtutil  cl  security` 的原文只命中弱的 log-clear,规整形态命中强的 security-log-clear,
+    // 不合起来再做一次就两条都计分,比标准写法 `wevtutil cl security` 的分还高。
+    QVector<const char*> yielded;
+    if (firstDecoded > firstCanonical) {
+        QVector<CommandLineAnalyzer::Hit> spellings = hitsPerText.at(0);
+        for (int i = firstCanonical; i < firstDecoded; ++i)
+            spellings += hitsPerText.at(i);
+        yielded = CommandLineAnalyzer::superseded(spellings);
+    }
+    const auto yields = [&yielded](const char* id) {
+        for (const char* weak : yielded)
+            if (qstrcmp(weak, id) == 0)
+                return true;
+        return false;
+    };
+
     bool download = false, execute = false, hidden = false, encoded = false, ipUrl = false;
     for (int i = 0; i < texts.size(); ++i) {
-        const bool decoded = i > 0 && i >= texts.size() - e.decodedCommandBlocks.size();
-        for (const CommandLineAnalyzer::Hit& h : CommandLineAnalyzer::scan(texts.at(i), actor)) {
+        const bool decoded = i >= firstDecoded;
+        const bool spelling = i == 0 || (i >= firstCanonical && i < firstDecoded);
+        for (const CommandLineAnalyzer::Hit& h : hitsPerText.at(i)) {
+            if (spelling && yields(h.id))
+                continue;
             const QString reason = decoded ? h.reason + u("(Base64 解码后)") : h.reason;
             sc.add(QLatin1String(h.id), h.source, h.score, reason, h.hard);
             download = download || qstrcmp(h.id, "download") == 0;

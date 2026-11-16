@@ -1,4 +1,5 @@
 #include "bulwark/engine/TrustPolicy.h"
+#include "bulwark/engine/CommandDeobfuscator.h"
 #include "bulwark/engine/EngineCommon.h"
 #include "bulwark/engine/TrustedSoftwareCatalog.h"
 #include "bulwark/engine/SelfProtection.h"
@@ -229,8 +230,12 @@ bool hasDangerousCommandLineOrSelfTarget(const bulwark::SecurityEvent& e) {
                               && !e.certRevoked && !e.signedAfterCertExpiry;
     if (detail::isContentInspectionProcess(e.actorPath, healthyIdentity))
         return false;
-    return hasDangerousCommandLine(e.commandLine)
-        || targetsProductSelf(e);
+    if (hasDangerousCommandLine(e.commandLine) || targetsProductSelf(e))
+        return true;
+    // 词表里的 "-w hidden"、"vssadmin delete" 是单空格字面量:多打空格、换成 Tab、给词加引号后执行效果不变,
+    // 不能因此就不算危险词而拿到信任。这里是拒绝信任方向的判断,多比对一份只会更严。
+    const QString tidy = CommandDeobfuscator::tidied(e.commandLine);
+    return tidy != e.commandLine && hasDangerousCommandLine(tidy);
 }
 bool isAbnormalChain(const bulwark::SecurityEvent& e) {
     const QString actor = fileNameLower(e.actorPath);

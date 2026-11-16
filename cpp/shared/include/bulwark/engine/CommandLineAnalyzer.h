@@ -18,6 +18,11 @@ struct CommandLineAnalyzer {
     // text 必须已转小写。actorName 为主体映像名(小写),用于只对特定程序成立的信号。
     static QVector<Hit> scan(const QString& lowerText, const QString& actorName);
 
+    // 同族信号里更强的一条在 hits 里命中时,应当让位、不再计分的较弱信号 id。
+    // scan 只在单段文本内做这一步;同一条命令的几种写法(原文与规整形态)各扫一遍时,
+    // 调用方要把命中合起来再问一次,否则强弱两条会分别在两种写法上各计一次分。
+    static QVector<const char*> superseded(const QVector<Hit>& hits);
+
     // 脚本正文:只对特定程序成立的信号,以正文里提到该程序为前提。
     static QVector<Hit> scanScript(const QString& lowerText);
 

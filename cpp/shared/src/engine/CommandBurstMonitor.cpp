@@ -1,4 +1,5 @@
 #include "bulwark/engine/CommandBurstMonitor.h"
+#include "bulwark/engine/CommandDeobfuscator.h"
 #include "bulwark/engine/ThreatDetector.h"
 #include "bulwark/Clock.h"
 #include <QMutexLocker>
@@ -109,7 +110,9 @@ CommandBurstMonitor::Result CommandBurstMonitor::observe(const SecurityEvent& e)
     Result r;
     if (e.type != EventType::ProcessCreate || e.commandLine.isEmpty())
         return r;
-    const QString cmd = e.commandLine.toLower();
+    // 下面的词表和正则都按单空格、不带引号的写法写的:`net  view`、`net<Tab>stop X`、`"net" "stop" X`
+    // 不规整就不计数。只用规整后的这一份,不与原文各算一遍:同一个服务名不能因为带不带引号被记成两个。
+    const QString cmd = CommandDeobfuscator::tidied(e.commandLine).toLower();
     const QSet<QString> discovered = discoveryKeys(fileNameLower(e.actorPath), cmd);
     const QSet<QString> stopped = stoppedServices(cmd);
     if (discovered.isEmpty() && stopped.isEmpty())

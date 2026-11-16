@@ -188,6 +188,151 @@ void testNoFalseRewrite()
     }
 }
 
+// 1c) 规整形态:多余的空白和引号不是混淆,但规则模式里的空格是字面量,不规整就能绕过
+
+QString formsText(const QStringList& forms)
+{
+    return QStringLiteral("[\"") + forms.join(QStringLiteral("\" | \"")) + QStringLiteral("\"]");
+}
+
+// expected 是完整的规整形态列表(顺序:只压空白的在前,再去引号的在后)。
+void checkCanonical(const QString& input, const QStringList& expected, const QString& what)
+{
+    const CommandDeobfuscator::Result r = CommandDeobfuscator::run(input);
+    expect(r.canonicalForms == expected,
+           what + QStringLiteral("  期望 ") + formsText(expected) + QStringLiteral(",实际 ")
+               + formsText(r.canonicalForms));
+}
+
+QString withoutQuotesAndSpace(const QString& s)
+{
+    QString out;
+    for (const QChar c : s)
+        if (!c.isSpace() && c != QLatin1Char('"') && c != QLatin1Char('\''))
+            out += c;
+    return out;
+}
+
+void testCanonicalForm()
+{
+    const QString tidy = QStringLiteral("sc stop WinDefend");
+    checkCanonical(QStringLiteral("sc  stop   WinDefend"), { tidy }, QStringLiteral("canonical: 连续空格"));
+    checkCanonical(QStringLiteral("sc\tstop\tWinDefend"), { tidy }, QStringLiteral("canonical: Tab"));
+    checkCanonical(QStringLiteral("sc \r\n stop WinDefend"), { tidy }, QStringLiteral("canonical: 换行"));
+    checkCanonical(QStringLiteral("\"sc\" stop WinDefend"), { tidy }, QStringLiteral("canonical: 程序名加引号"));
+    checkCanonical(QStringLiteral("'sc' stop \"WinDefend\""), { tidy },
+                   QStringLiteral("canonical: 单引号与参数加引号"));
+    // 空白和引号都有:两份都留,只压空白的在前。
+    checkCanonical(QStringLiteral("\"C:\\Windows\\System32\\sc.exe\"  stop WinDefend"),
+                   { QStringLiteral("\"C:\\Windows\\System32\\sc.exe\" stop WinDefend"),
+                     QStringLiteral("C:\\Windows\\System32\\sc.exe stop WinDefend") },
+                   QStringLiteral("canonical: 带路径的程序名"));
+
+    // 带空格的参数必须留着引号:去掉就分不清参数边界了。
+    checkCanonical(QStringLiteral("\"C:\\Program Files\\Git\\bin\\git.exe\"  commit -m \"fix a b\""),
+                   { QStringLiteral("\"C:\\Program Files\\Git\\bin\\git.exe\" commit -m \"fix a b\"") },
+                   QStringLiteral("canonical: 带空格的参数保留引号"));
+
+    // 规则模式本身带引号的(*.lastwritetime = '*)要靠保留引号的那一份:只留去引号的会对不上。
+    checkCanonical(
+        QStringLiteral("powershell.exe  -c \"(Get-Item C:\\a.exe).LastWriteTime  =  '2020-01-01'\""),
+        { QStringLiteral("powershell.exe -c \"(Get-Item C:\\a.exe).LastWriteTime = '2020-01-01'\""),
+          QStringLiteral("powershell.exe -c \"(Get-Item C:\\a.exe).LastWriteTime = 2020-01-01\"") },
+        QStringLiteral("canonical: 保留引号的一份与去引号的一份都要有"));
+
+    // tidied():给直接读原文的检测点用,永远是"压空白 + 去单 token 引号"的那一份;没有可规整的就是原文。
+    expect(CommandDeobfuscator::tidied(QStringLiteral("\"net\"  \"stop\"\tFax /y")) == QStringLiteral("net stop Fax /y"),
+           QStringLiteral("tidied: 空白与引号一起规整"));
+    expect(CommandDeobfuscator::tidied(QStringLiteral("w\"h\"oami  /priv")) == QStringLiteral("whoami /priv"),
+           QStringLiteral("tidied: 不受\"与还原结果相同就不留\"的去重影响"));
+    expect(CommandDeobfuscator::tidied(tidy) == tidy
+               && CommandDeobfuscator::tidied(QStringLiteral("net stop \"Print Spooler\""))
+                      == QStringLiteral("net stop \"Print Spooler\""),
+           QStringLiteral("tidied: 没有可规整的内容时原样返回"));
+
+    // 没有可规整的内容,或只差首尾空白:留空,规则不必多比对一遍。
+    const QStringList untouched = {
+        tidy,
+        tidy + QStringLiteral(" "),
+        QStringLiteral(" svchost.exe -k netsvcs -p"),
+        QStringLiteral("cmake --build . --config Release --target bulwark_shared"),
+        QStringLiteral("msedge.exe --type=renderer --lang=zh-CN --device-scale-factor=1"),
+    };
+    for (const QString& c : untouched)
+        expect(CommandDeobfuscator::run(c).canonicalForms.isEmpty(),
+               QStringLiteral("canonical: 不需要规整的命令行应留空 —— \"") + c + QStringLiteral("\""));
+
+    // 规整不是混淆还原:normalized 与 layers 不能因此有值。
+    {
+        const CommandDeobfuscator::Result r =
+            CommandDeobfuscator::run(QStringLiteral("\"sc\"  stop\tWinDefend"));
+        const QStringList want = { QStringLiteral("\"sc\" stop WinDefend"), tidy };
+        expect(r.normalized.isEmpty() && r.layers.isEmpty() && r.canonicalForms == want,
+               QStringLiteral("canonical: 规整不得记成混淆还原,normalized \"") + r.normalized
+                   + QStringLiteral("\",canonical ") + formsText(r.canonicalForms));
+    }
+
+    // 还原结果已经是同一串的那一份不重复留;只压空白的那一份与它不同,照留。
+    {
+        const CommandDeobfuscator::Result r =
+            CommandDeobfuscator::run(QStringLiteral("w\"h\"oami  /priv"));
+        const QStringList want = { QStringLiteral("w\"h\"oami /priv") };
+        expect(r.normalized == QStringLiteral("whoami /priv") && r.canonicalForms == want,
+               QStringLiteral("canonical: 与还原结果相同的一份不重复留,实际 ") + formsText(r.canonicalForms));
+    }
+
+    // 超过还原上限的命令行照样规整:否则填充几 KB 就绕开了。
+    {
+        const QString pad(CommandDeobfuscator::kMaxInputChars, QLatin1Char('a'));
+        const CommandDeobfuscator::Result r =
+            CommandDeobfuscator::run(QStringLiteral("sc  stop WinDefend & rem ") + pad);
+        expect(r.normalized.isEmpty() && r.canonicalForms.size() == 1
+                   && r.canonicalForms.at(0).startsWith(QStringLiteral("sc stop WinDefend & rem a")),
+               QStringLiteral("canonical: 超长命令行也要规整"));
+    }
+
+    // 给 Base64 正文或 -enc 本身加引号、中间多打空白,PowerShell 都照常执行,正文必须照样解出来。
+    {
+        const QString b64 = QStringLiteral(
+            "SQBFAFgAKABOAGUAdwAtAE8AYgBqAGUAYwB0ACAATgBlAHQALgBXAGUAYgBDAGwAaQBlAG4AdAApAC4A"
+            "RABvAHcAbgBsAG8AYQBkAFMAdAByAGkAbgBnAA==");
+        const QStringList forms = {
+            QStringLiteral("powershell -nop -enc \"") + b64 + QStringLiteral("\""),
+            QStringLiteral("powershell -nop -enc '") + b64 + QStringLiteral("'"),
+            QStringLiteral("powershell -nop \"-enc\" \"") + b64 + QStringLiteral("\""),
+            QStringLiteral("powershell -nop -enc \t ") + b64,
+        };
+        for (const QString& f : forms) {
+            const CommandDeobfuscator::Result r = CommandDeobfuscator::run(f);
+            expect(r.decodedBlocks.size() == 1
+                       && r.decodedBlocks.at(0).contains(QStringLiteral("DownloadString")),
+                   QStringLiteral("canonical: 加了引号 / 空白的 Base64 正文也要解码 —— \"") + f.left(40)
+                       + QStringLiteral("...\""));
+        }
+    }
+
+    // 规整只删引号、只合并空白:去掉全部空白和引号之后,两边必须逐字相同。
+    const QStringList samples = {
+        QStringLiteral("\"C:\\Program Files\\Git\\bin\\git.exe\" commit -m \"fix: 修正 a+b\""),
+        QStringLiteral("powershell.exe  -NoProfile -File \"C:\\x\\b.ps1\""),
+        QStringLiteral("robocopy \"D:\\a b\" \"E:\\c d\"   /MIR /R:1"),
+        QStringLiteral("7z.exe a -tzip out.zip \"C:\\data\\*\" -mx=9"),
+        QStringLiteral("schtasks /Create /TN Backup /TR \"C:\\tools\\backup.exe\" /SC DAILY"),
+        QStringLiteral("cmd /c \"echo it's  fine\" & echo 'x'"),
+        QStringLiteral("\"a b\"c\"d e\"  'f'"),
+        QStringLiteral("python -c \"print('a'  +  'b')\""),
+    };
+    for (const QString& c : samples) {
+        const CommandDeobfuscator::Result r = CommandDeobfuscator::run(c);
+        for (const QString& form : r.canonicalForms)
+            expect(withoutQuotesAndSpace(form) == withoutQuotesAndSpace(c),
+                   QStringLiteral("canonical: 只能删引号、合并空白,实际 \"") + form
+                       + QStringLiteral("\"(原文 \"") + c + QStringLiteral("\")"));
+        expect(withoutQuotesAndSpace(CommandDeobfuscator::tidied(c)) == withoutQuotesAndSpace(c),
+               QStringLiteral("tidied: 只能删引号、合并空白(原文 \"") + c + QStringLiteral("\")"));
+    }
+}
+
 // 2) 放行规则不得被还原文本放宽
 
 void testAllowRuleNotWidened()
@@ -236,6 +381,32 @@ void testAllowRuleNotWidened()
     dec.decodedCommandBlocks = QStringList{ QStringLiteral("powershell -nologo -c whoami") };
     expect(!allow.matches(dec), QStringLiteral("放行规则不吃 Base64 解码正文"));
     expect(block.matches(dec), QStringLiteral("拦截规则吃 Base64 解码正文"));
+
+    // 规整形态同样只喂给 Block / Ask。
+    SecurityEvent canon;
+    canon.type = EventType::ProcessCreate;
+    canon.commandLine = QStringLiteral("powershell  -nologo -c whoami");
+    canon.canonicalCommandLines = CommandDeobfuscator::run(canon.commandLine).canonicalForms;
+    expect(!canon.canonicalCommandLines.isEmpty(), QStringLiteral("前提: 这条命令行有规整形态"));
+    expect(!allow.matches(canon), QStringLiteral("放行规则不吃规整形态"));
+    expect(block.matches(canon), QStringLiteral("拦截规则吃规整形态:多打一个空格必须照样命中"));
+    expect(ask.matches(canon), QStringLiteral("询问规则吃规整形态"));
+
+    // 模式里既有引号又有空格:要靠保留引号的那一份命中;模式里没有引号的靠去引号的那一份。
+    DefenseRule quoted = block;
+    quoted.commandLinePattern = QStringLiteral("*.lastwritetime = '*");
+    DefenseRule bare = block;
+    bare.commandLinePattern = QStringLiteral("*-c whoami*");
+    SecurityEvent both;
+    both.type = EventType::ProcessCreate;
+    both.commandLine = QStringLiteral("powershell  -c 'whoami'; (Get-Item C:\\a.exe).LastWriteTime  =  '2020-01-01'");
+    both.canonicalCommandLines = CommandDeobfuscator::run(both.commandLine).canonicalForms;
+    expect(both.canonicalCommandLines.size() == 2, QStringLiteral("前提: 这条命令行两份规整形态都有"));
+    expect(quoted.matches(both), QStringLiteral("带引号的模式靠保留引号的规整形态命中"));
+    expect(bare.matches(both), QStringLiteral("不带引号的模式靠去引号的规整形态命中"));
+    both.canonicalCommandLines.clear();
+    expect(!quoted.matches(both) && !bare.matches(both),
+           QStringLiteral("前提: 不规整时这两条模式都对不上原文"));
 }
 
 // 3) 端到端:混淆写法与干净写法拿到同一个裁决
@@ -572,6 +743,149 @@ void testRuleBoundaries()
            QStringLiteral("amsi: 删除全部卷影照拦"));
 }
 
+// 3c) 端到端:同一条命令,多打空格 / 换成 Tab / 给程序名加引号,必须拿到与标准写法相同的裁决。
+// 恶意写法与正常写法都测:前者防绕过,后者防规整把正常命令变成拦截。
+
+bool hasCanonicalNote(const SecurityEvent& e)
+{
+    for (const Evidence& ev : e.evidenceChain)
+        if (ev.source == QLatin1String("CommandDeobfuscator")
+            && ev.description.contains(QStringLiteral("规整后的命令行")))
+            return true;
+    return false;
+}
+
+void testWhitespaceParity()
+{
+    const QString sys = QStringLiteral("C:\\Windows\\System32\\");
+    const QString ps = sys + QStringLiteral("WindowsPowerShell\\v1.0\\powershell.exe");
+    const QString ms = QStringLiteral("Microsoft Windows");
+
+    struct Case {
+        QString actor;
+        QString tidy;
+        QStringList variants;
+        bool mustAct;   // 标准写法本来就该被处置,否则下面的「相等」是空话
+        const char* what;
+    };
+    const QVector<Case> cases = {
+        { sys + QStringLiteral("sc.exe"), QStringLiteral("sc stop WinDefend"),
+          { QStringLiteral("sc  stop  WinDefend"), QStringLiteral("sc\tstop\tWinDefend"),
+            QStringLiteral("\"sc\" stop WinDefend"), QStringLiteral("sc stop \"WinDefend\"") },
+          true, "停 Defender 服务" },
+        { sys + QStringLiteral("net.exe"), QStringLiteral("net user x /add"),
+          { QStringLiteral("net  user x /add"), QStringLiteral("net\tuser\tx\t/add"),
+            QStringLiteral("\"net\" user x /add") },
+          true, "新建本地账户" },
+        { sys + QStringLiteral("vssadmin.exe"), QStringLiteral("vssadmin delete shadows /all /quiet"),
+          { QStringLiteral("vssadmin  delete  shadows  /all  /quiet"),
+            QStringLiteral("vssadmin delete\tshadows /all /quiet") },
+          true, "删除全部卷影" },
+        { sys + QStringLiteral("wevtutil.exe"), QStringLiteral("wevtutil cl Security"),
+          { QStringLiteral("wevtutil  cl  Security"), QStringLiteral("\"wevtutil\" cl Security") },
+          true, "清空安全日志" },
+        // 命中的规则模式自己带引号和空格(*.lastwritetime = '*):要靠保留引号的那份规整形态。
+        { ps,
+          QStringLiteral("powershell.exe -c \"(Get-Item C:\\malware.exe).LastWriteTime = '2020-01-01'\""),
+          { QStringLiteral("powershell.exe  -c  \"(Get-Item  C:\\malware.exe).LastWriteTime  =  '2020-01-01'\""),
+            QStringLiteral("powershell.exe\t-c\t\"(Get-Item\tC:\\malware.exe).LastWriteTime\t=\t'2020-01-01'\"") },
+          true, "改文件时间戳" },
+
+        { sys + QStringLiteral("sc.exe"), QStringLiteral("sc query WinDefend"),
+          { QStringLiteral("sc  query  WinDefend"), QStringLiteral("\"sc\" query WinDefend") },
+          false, "只查询服务状态" },
+        { sys + QStringLiteral("cmd.exe"), QStringLiteral("cmd.exe /c sc stop MyAppSvc && type license.txt"),
+          { QStringLiteral("cmd.exe  /c  sc  stop  MyAppSvc  &&  type  license.txt") },
+          false, "停别的服务" },
+        { ps,
+          QStringLiteral("powershell.exe -Command \"Set-MpPreference -DisableRealtimeMonitoring $false "
+                         "-SignatureUpdateInterval 1\""),
+          { QStringLiteral("powershell.exe  -Command  \"Set-MpPreference  -DisableRealtimeMonitoring  $false  "
+                           "-SignatureUpdateInterval  1\"") },
+          false, "重新开启 Defender" },
+        { QStringLiteral("C:\\Program Files\\Git\\cmd\\git.exe"),
+          QStringLiteral("git.exe commit -m \"tidy up\""),
+          { QStringLiteral("git.exe  commit  -m  \"tidy up\""), QStringLiteral("\"git.exe\" commit -m \"tidy up\"") },
+          false, "git 提交" },
+    };
+
+    for (const Case& c : cases) {
+        const QString what = QString::fromUtf8(c.what);
+        SecurityEvent a = makeProc(c.actor, c.tidy, true, ms);
+        const Verdict va = evaluateBuiltin(a);
+        if (c.mustAct)
+            expect(va.action != VerdictAction::Allow,
+                   QStringLiteral("前提: 标准写法应被处置 —— ") + what + verdictText(va, a));
+        else
+            expect(va.action != VerdictAction::Block,
+                   QStringLiteral("前提: 正常命令的标准写法不该被拦 —— ") + what + verdictText(va, a));
+
+        for (const QString& variant : c.variants) {
+            SecurityEvent b = makeProc(c.actor, variant, true, ms);
+            const Verdict vb = evaluateBuiltin(b);
+            expect(vb.action == va.action,
+                   QStringLiteral("空白 / 引号写法不得改变裁决 —— ") + what + QStringLiteral(":标准写法 ")
+                       + actionName(va.action) + QStringLiteral(",\"") + variant + QStringLiteral("\" ")
+                       + verdictText(vb, b));
+            expect(b.commandDeobfuscationLayers.isEmpty() && !b.commandDeobfuscationReported,
+                   QStringLiteral("规整不得记成混淆 —— ") + what + QStringLiteral(":\"") + variant
+                       + QStringLiteral("\""));
+        }
+    }
+
+    // 规则只在规整形态上命中时,证据链要说清比对的是哪一串;原文就命中时不该多这一条。
+    {
+        SecurityEvent b = makeProc(sys + QStringLiteral("sc.exe"), QStringLiteral("sc  stop  WinDefend"), true, ms);
+        const Verdict vb = evaluateBuiltin(b);
+        expect(hasCanonicalNote(b),
+               QStringLiteral("规整形态命中要写进证据链") + verdictText(vb, b));
+        SecurityEvent a = makeProc(sys + QStringLiteral("sc.exe"), QStringLiteral("sc stop WinDefend"), true, ms);
+        const Verdict va = evaluateBuiltin(a);
+        expect(!hasCanonicalNote(a),
+               QStringLiteral("原文就命中时不该记规整") + verdictText(va, a));
+    }
+
+    // 同族强弱信号跨写法只计一次:弱的「清除事件日志」在双空格原文上命中、强的「清除安全事件日志」在规整形态上命中时,
+    // 风险分不得比标准写法高,否则多打一个空格反而更容易被拦。
+    {
+        const QString wevtutil = sys + QStringLiteral("wevtutil.exe");
+        SecurityEvent a = makeProc(wevtutil, QStringLiteral("wevtutil.exe cl Security"), true, ms);
+        const Verdict va = evaluateBuiltin(a);
+        expect(a.riskScore > 0, QStringLiteral("前提: 清空安全日志的标准写法有风险分") + verdictText(va, a));
+        for (const QString& variant : { QStringLiteral("wevtutil.exe  cl  Security"),
+                                        QStringLiteral("wevtutil.exe\tcl\tSecurity"),
+                                        QStringLiteral("wevtutil.exe  cl \"Security\"") }) {
+            SecurityEvent b = makeProc(wevtutil, variant, true, ms);
+            const Verdict vb = evaluateBuiltin(b);
+            expect(vb.action == va.action && b.riskScore == a.riskScore,
+                   QStringLiteral("空白 / 引号写法的风险分应与标准写法相同:标准 ") + QString::number(a.riskScore)
+                       + QStringLiteral(",\"") + variant + QStringLiteral("\" ") + QString::number(b.riskScore)
+                       + verdictText(vb, b));
+        }
+    }
+
+    // 信任策略的危险词(-windowstyle hidden + bypass)不能靠多打空格 / 加引号躲过去:
+    // 标准写法拿不到「可信签名放行」,换个写法也不该拿到。
+    {
+        SecurityEvent a = makeProc(
+            ps, QStringLiteral("powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\\Scripts\\logon.ps1"),
+            true, ms);
+        const Verdict va = evaluateBuiltin(a);
+        expect(va.source != VerdictSource::TrustedSigner,
+               QStringLiteral("前提: 带危险词的标准写法不走可信签名放行") + verdictText(va, a));
+        for (const QString& variant :
+             { QStringLiteral("powershell.exe -WindowStyle  Hidden -ExecutionPolicy Bypass -File C:\\Scripts\\logon.ps1"),
+               QStringLiteral("powershell.exe -WindowStyle\tHidden -ExecutionPolicy Bypass -File C:\\Scripts\\logon.ps1"),
+               QStringLiteral("powershell.exe \"-WindowStyle\" \"Hidden\" -ExecutionPolicy Bypass -File C:\\Scripts\\logon.ps1") }) {
+            SecurityEvent b = makeProc(ps, variant, true, ms);
+            const Verdict vb = evaluateBuiltin(b);
+            expect(vb.action == va.action && vb.source == va.source,
+                   QStringLiteral("空白 / 引号写法不得改变信任判断 —— \"") + variant + QStringLiteral("\" ")
+                       + verdictText(vb, b));
+        }
+    }
+}
+
 // 微基准(--bench,ctest 不跑)
 // 直接测 CommandDeobfuscator::run 的单次成本,再与引擎每事件成本相比:
 // 整条流水线的 A/B(bulwark_snapshot --bench)噪声太大,分辨不出几微秒的增量。
@@ -654,10 +968,12 @@ int main(int argc, char** argv)
 
     testDeobfuscator();
     testNoFalseRewrite();
+    testCanonicalForm();
     testAllowRuleNotWidened();
     testVerdictParity();
     testEndToEndNoFalsePositive();
     testRuleBoundaries();
+    testWhitespaceParity();
 
     setFixedNowUtcForTest(QDateTime());
 

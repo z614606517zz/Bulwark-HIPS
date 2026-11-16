@@ -130,6 +130,12 @@ bool DefenseRule::matchesCommandLine(const SecurityEvent& e) const {
         && wildcardMatch(commandLinePattern, e.normalizedCommandLine))
         return true;
 
+    // 规整形态:模式里的空格是字面量,`sc  stop X`、`sc<Tab>stop X`、`"sc" stop X` 不规整就对不上 `*sc stop *`。
+    // 两份都比:模式本身带引号的(`*.creationtime = '*`)要靠保留引号的那一份。
+    for (const QString& form : e.canonicalCommandLines)
+        if (wildcardMatch(commandLinePattern, form))
+            return true;
+
     for (const QString& block : e.decodedCommandBlocks)
         if (wildcardMatch(commandLinePattern, block))
             return true;

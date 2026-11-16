@@ -225,6 +225,48 @@ QString collapseWhitespace(const QString& s) {
     return out;
 }
 
+// 规整会不会改动这一串:有引号,或者有连续空白 / 空格以外的空白字符。
+// 两样都没有的命令行在这里就返回,不分配也不跑正则。
+bool hasCanonicalWork(const QString& s) {
+    bool prevSpace = false;
+    for (const QChar c : s) {
+        if (isQuote(c))
+            return true;
+        if (!c.isSpace()) { prevSpace = false; continue; }
+        if (prevSpace || c != u' ')
+            return true;
+        prevSpace = true;
+    }
+    return false;
+}
+
+bool hasQuoteChar(const QString& s) {
+    for (const QChar c : s)
+        if (isQuote(c))
+            return true;
+    return false;
+}
+
+// 原文的规整形态(见 Result::canonicalForms)。只删引号、只合并空白,不会长出原文没有的字符。
+// 与原文去掉首尾空白后一致、或与 normalized 一致的不留:那种差别不值得让每条规则多比对一遍。
+// unquoteTokens 的字符集里没有空白,先压空白再去引号与反过来做结果相同。
+QStringList canonicalFormsOf(const QString& s, const QString& normalized) {
+    QStringList out;
+    if (s.size() > CommandDeobfuscator::kMaxCanonicalInputChars || !hasCanonicalWork(s))
+        return out;
+    const QString spaced = collapseWhitespace(s);
+    if (spaced.isEmpty())
+        return out;
+    if (spaced != normalized && spaced != s.trimmed())
+        out << spaced;
+    if (hasQuoteChar(spaced)) {
+        const QString bare = unquoteTokens(spaced);
+        if (bare != spaced && bare != normalized)
+            out << bare;
+    }
+    return out;
+}
+
 // Base64 正文解码。两种入口:PowerShell 的 -EncodedCommand / -enc / -e,以及行内的
 // [Convert]::FromBase64String('...')。解不出可读文本就丢弃:任意二进制进了匹配面只会制造随机命中。
 QString decodeBase64Payload(const QString& b64) {
@@ -277,7 +319,8 @@ QString decodeBase64Payload(const QString& b64) {
 void collectDecodedBlocks(const QString& s, QStringList* out) {
     static const QRegularExpression res[] = {
         QRegularExpression(
-            QStringLiteral("-(?:encodedcommand|encodedarguments|encoded|enc|ec|e)\\s+"
+            // 正文外面允许有一个引号:-enc "<b64>" 是很自然的写法,PowerShell 照常执行。
+            QStringLiteral("-(?:encodedcommand|encodedarguments|encoded|enc|ec|e)\\s+['\"]?"
                            "([A-Za-z0-9+/=]{16,})"),
             QRegularExpression::CaseInsensitiveOption),
         QRegularExpression(
@@ -305,8 +348,12 @@ void collectDecodedBlocks(const QString& s, QStringList* out) {
 
 CommandDeobfuscator::Result CommandDeobfuscator::run(const QString& commandLine) {
     Result r;
-    if (commandLine.trimmed().isEmpty() || commandLine.size() > kMaxInputChars)
+    if (commandLine.trimmed().isEmpty())
         return r;
+    if (commandLine.size() > kMaxInputChars) {
+        r.canonicalForms = canonicalFormsOf(commandLine, QString());
+        return r;
+    }
 
     bool caretL = false, tickL = false, charL = false, fmtL = false, concatL = false;
 
@@ -354,12 +401,18 @@ CommandDeobfuscator::Result CommandDeobfuscator::run(const QString& commandLine)
             r.normalized = cur;
     }
 
-    // 还原后的文本里才会露出 -enc <b64> 这种形态(原文可能写成 -e^n^c),所以几份都扫。
+    // 规整形态永远从原文算,与上面有没有做还原无关;和 normalized 是同一串时不重复留。
+    r.canonicalForms = canonicalFormsOf(commandLine, r.normalized);
+
+    // 还原 / 规整后的文本里才会露出 -enc <b64> 这种形态(原文可能写成 -e^n^c,或者给正文加了引号
+    // 写成 -enc "<b64>"),所以几份都扫。
     collectDecodedBlocks(commandLine, &r.decodedBlocks);
     if (!preUnquote.isEmpty())
         collectDecodedBlocks(preUnquote, &r.decodedBlocks);
     if (!r.normalized.isEmpty())
         collectDecodedBlocks(r.normalized, &r.decodedBlocks);
+    for (const QString& form : r.canonicalForms)
+        collectDecodedBlocks(form, &r.decodedBlocks);
 
     if (caretL)   r.layers << u("cmd ^ 转义");
     if (tickL)    r.layers << u("PowerShell ` 转义");
@@ -369,6 +422,24 @@ CommandDeobfuscator::Result CommandDeobfuscator::run(const QString& commandLine)
     if (!r.decodedBlocks.isEmpty()) r.layers << u("Base64 解码");
 
     return r;
+}
+
+QString CommandDeobfuscator::tidied(const QString& commandLine) {
+    if (commandLine.size() > kMaxCanonicalInputChars || !hasCanonicalWork(commandLine))
+        return commandLine;
+    const QString spaced = collapseWhitespace(commandLine);
+    if (spaced.isEmpty())
+        return commandLine;
+    return hasQuoteChar(spaced) ? unquoteTokens(spaced) : spaced;
+}
+
+void reportCommandCanonicalization(SecurityEvent& e, const QString& matchedForm) {
+    if (matchedForm.isEmpty())
+        return;
+    e.addEvidence(QStringLiteral("CommandDeobfuscator"), EvidenceKind::Info,
+                  u("该规则命中的是规整后的命令行(比对时把连续空白当作一个空格、把包着单个参数的引号当作没有)"),
+                  0);
+    e.addSnippet(snippet::fromText(u("规整后的命令行"), matchedForm));
 }
 
 void reportCommandDeobfuscation(SecurityEvent& e, const QString& why) {

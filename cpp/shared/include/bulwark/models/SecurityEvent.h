@@ -74,6 +74,10 @@ struct SecurityEvent {
     // 还原是否已写进证据链。还原本身不算证据:7-Zip 的 -o"C:\path"、Inno 的 /c ""setup.tmp"" 这类正常写法也会触发还原。
     // 只有某条特征或规则只在还原后的文本上才命中时,才由 reportCommandDeobfuscation 记一次。
     bool commandDeobfuscationReported = false;
+    // 原文的规整形态(至多两份:连续空白压成一个空格的,以及再去掉包着单个 token 的引号的),
+    // 同样是每次评估重算的过程量,不进 toJson。与还原无关:正常命令行也会有,不能当作"被混淆过"的依据。
+    // 为空表示规整后与原文或 normalizedCommandLine 一致。
+    QStringList canonicalCommandLines;
 
     QString target;
     QString detail;

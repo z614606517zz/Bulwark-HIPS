@@ -420,6 +420,7 @@ static void deobfuscateCommandLine(SecurityEvent& e) {
     e.decodedCommandBlocks.clear();
     e.commandDeobfuscationLayers.clear();
     e.commandDeobfuscationReported = false;
+    e.canonicalCommandLines.clear();
     if (e.commandLine.isEmpty())
         return;
     const bool healthyIdentity = e.actorSigned && !e.signatureMismatch
@@ -430,6 +431,7 @@ static void deobfuscateCommandLine(SecurityEvent& e) {
     e.normalizedCommandLine = d.normalized;
     e.decodedCommandBlocks = d.decodedBlocks;
     e.commandDeobfuscationLayers = d.layers;
+    e.canonicalCommandLines = d.canonicalForms;
 }
 
 static void flagProductTampering(SecurityEvent& e) {
@@ -867,8 +869,20 @@ Verdict RuleEngine::evaluateInternal(SecurityEvent& e) {
             // 规则靠还原后的文本命中时要说清这一点:否则界面上显示的命令行与命中的
             // 判据对不上,一条真命中会被用户当成误报。只在原文确实不命中时才记。
             if (!hit.commandLinePattern.isEmpty()
-                && !DefenseRule::wildcardMatch(hit.commandLinePattern, e.commandLine))
-                reportCommandDeobfuscation(e, u("该规则命中的是还原后的命令行"));
+                && !DefenseRule::wildcardMatch(hit.commandLinePattern, e.commandLine)) {
+                // 规整形态命中不是混淆还原,分开说:多余的空白和引号正常命令行里也有。
+                QString matchedForm;
+                for (const QString& form : e.canonicalCommandLines) {
+                    if (DefenseRule::wildcardMatch(hit.commandLinePattern, form)) {
+                        matchedForm = form;
+                        break;
+                    }
+                }
+                if (!matchedForm.isEmpty())
+                    reportCommandCanonicalization(e, matchedForm);
+                else
+                    reportCommandDeobfuscation(e, u("该规则命中的是还原后的命令行"));
+            }
             e.addEvidence(QStringLiteral("RuleEngine"), EvidenceKind::Rule,
                 u("命中规则:") + (hit.note.isEmpty() ? actionName : hit.note), 0, false);
             // 询问规则只表达「至少要问」:不命中规则时会被拦下的事件,命中询问规则后不能反而只问。

@@ -310,6 +310,31 @@ void testCommandBurst()
         run(990, cmdExe, sweep[i][0], sweep[i][1], 100 + i);
     r = run(990, cmdExe, sweep[4][0], sweep[4][1], 100 + 70);
     check(r.serviceStop.score == 0, "超出 1 分钟窗口的停服务不累计");
+
+    // 多打空格、换成 Tab、给程序名加引号,执行起来是同一条命令,计数不能因此漏掉。
+    const char* reconSpaced[] = { "cmd /c net  view", "cmd /c net\tshare", "cmd /c \"net\" accounts",
+                                  "cmd /c arp  -a", "cmd /c route\tprint" };
+    for (int i = 0; i < 4; ++i)
+        r = run(1100, dropper, cmdExe, reconSpaced[i], 200 + i);
+    check(r.discovery.score == 0, "空白 / 引号写法的 4 类侦察命令不成批");
+    r = run(1100, dropper, cmdExe, reconSpaced[4], 204);
+    check(r.discovery.hardSignal && r.discovery.score == 40, "空白 / 引号写法的侦察命令照样计数");
+
+    const char* sweepSpaced[] = { "net  stop  SQLWriter /y", "net\tstop\tVeeamBackupSvc",
+                                  "\"net\" \"stop\" MSExchangeIS", "sc  stop  wbengine",
+                                  "\"sc.exe\"  stop  sophos" };
+    for (int i = 0; i < 4; ++i)
+        r = run(1200, dropper, net, sweepSpaced[i], 220 + i);
+    check(r.serviceStop.score == 0, "空白 / 引号写法停 4 个服务不报");
+    r = run(1200, dropper, net, sweepSpaced[4], 224);
+    check(r.serviceStop.hardSignal, "空白 / 引号写法的停服务照样计数");
+
+    // 同一个服务换着写法停 5 次仍是 1 个:规整不能把带引号和不带引号的名字记成两个。
+    const char* sameService[] = { "net stop 'Fax'", "net stop \"Fax\"", "net  stop Fax", "\"net\" stop fax",
+                                  "net stop\tFAX" };
+    for (int i = 0; i < 5; ++i)
+        r = run(1300, dropper, net, sameService[i], 240 + i);
+    check(r.serviceStop.score == 0, "同一个服务换写法反复停只算 1 个");
 }
 
 void testRenamedTool()

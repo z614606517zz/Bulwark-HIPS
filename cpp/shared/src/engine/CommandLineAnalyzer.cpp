@@ -263,21 +263,26 @@ QVector<CommandLineAnalyzer::Hit> runSignals(const QString& lowerText, Allowed a
         h.token = first ? QString::fromLatin1(first) : QString();
         hits.append(h);
     }
-    for (const auto& [strong, weak] : kSupersedes) {
-        const bool hasStrong = std::any_of(hits.cbegin(), hits.cend(),
-                                           [s = strong](const CommandLineAnalyzer::Hit& h) {
-                                               return qstrcmp(h.id, s) == 0;
-                                           });
-        if (hasStrong)
-            hits.erase(std::remove_if(hits.begin(), hits.end(),
-                                      [w = weak](const CommandLineAnalyzer::Hit& h) {
-                                          return qstrcmp(h.id, w) == 0;
-                                      }),
-                       hits.end());
-    }
+    for (const char* weak : CommandLineAnalyzer::superseded(hits))
+        hits.erase(std::remove_if(hits.begin(), hits.end(),
+                                  [weak](const CommandLineAnalyzer::Hit& h) {
+                                      return qstrcmp(h.id, weak) == 0;
+                                  }),
+                   hits.end());
     return hits;
 }
 
+}
+
+QVector<const char*> CommandLineAnalyzer::superseded(const QVector<Hit>& hits) {
+    QVector<const char*> out;
+    for (const auto& [strong, weak] : kSupersedes) {
+        const bool hasStrong = std::any_of(hits.cbegin(), hits.cend(),
+                                           [s = strong](const Hit& h) { return qstrcmp(h.id, s) == 0; });
+        if (hasStrong)
+            out.append(weak);
+    }
+    return out;
 }
 
 bool CommandLineAnalyzer::isScriptHost(const QString& actorName) {

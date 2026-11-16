@@ -938,8 +938,6 @@ void Worker::enrich(SecurityEvent& e) {
 
     scanScriptFileBody(e);
 
-    applyYaraVerdict(e);
-
     if (facts.isRealFile)
         e.actorFileSize = facts.fileSize;
 
@@ -2676,108 +2674,6 @@ void Worker::scanScriptFileBody(bulwark::SecurityEvent& e) {
         log_.warning(QStringLiteral("脚本正文判据命中:%1 执行 %2 —— %3(%4 分)")
                          .arg(host, scriptPath, scan.hits.join(QStringLiteral(", ")))
                          .arg(scan.score));
-}
-
-void Worker::setYaraScanner(YaraScanner* scanner) {
-    yara_ = scanner;
-    if (!scanner)
-        return;
-    scanner->setMaliciousCallback([this](const QString& sha256, const YaraScanner::Verdict& verdict,
-                                         const QVector<YaraScanner::Target>& targets) {
-        QMetaObject::invokeMethod(
-            this, [this, sha256, verdict, targets] { onYaraMalicious(sha256, verdict, targets); },
-            Qt::QueuedConnection);
-    });
-}
-
-// 扫过的直接取结论(任何事件类型:同一个程序后续写文件、联网时也带上);没扫过的只在
-// 进程启动时排队,结论回来之前这次事件照常裁决,不等。微软签名的系统文件不扫。
-void Worker::applyYaraVerdict(bulwark::SecurityEvent& e) {
-    if (!yara_ || e.actorHash.size() != 64)
-        return;
-    const QString sha = e.actorHash.toLower();
-    if (const std::optional<YaraScanner::Verdict> v = yara_->lookup(sha)) {
-        if (v->level == YaraScanner::Level::Clean)
-            return;
-        e.yaraLevel = v->level == YaraScanner::Level::Malicious ? SecurityEvent::YaraMalicious
-                                                                : SecurityEvent::YaraSuspicious;
-        e.yaraRule = v->rule;
-        e.yaraAuthor = v->author;
-        e.yaraMatchCount = v->matchCount;
-        return;
-    }
-    if (e.type != bulwark::EventType::ProcessCreate || e.actorPid <= 4)
-        return;
-    if (TrustPolicy::isMicrosoftSystemImage(e))
-        return;
-    YaraScanner::Target t;
-    t.sha256 = sha;
-    t.path = QDir::toNativeSeparators(e.actorPath);
-    t.pid = e.actorPid;
-    t.creationFileTime = e.actorCreationFileTime.value_or(0);
-    t.commandLine = e.commandLine;
-    t.parentPid = e.parentPid;
-    t.parentPath = e.parentPath;
-    yara_->submit(t);
-}
-
-// 后台扫描判为恶意时进程已经在跑:与兜底扫描同一处置路径(结束 + 跨重启禁止执行 + 隔离 + 清残留)。
-// 只对仍是同一实例的进程动手 —— 扫描期间它可能已退出、PID 已被别的进程复用;
-// 都不在了就只隔离文件、清理残留,不结束任何进程。
-void Worker::onYaraMalicious(const QString& sha256, const YaraScanner::Verdict& verdict,
-                             const QVector<YaraScanner::Target>& targets) {
-    {
-        QMutexLocker lk(&maliciousHashMx_);
-        confirmedMaliciousHashes_.insert(sha256.toLower());
-    }
-    const QString label = QStringLiteral("YARA 家族规则命中:%1").arg(verdict.rule);
-    if (protectionSuspended_.load() || (settings_ && !settings_->protectionEnabled)) {
-        log_.warning(QStringLiteral("%1 —— 防护当前暂停,只记下哈希 %2,恢复后由兜底扫描补处置。")
-                         .arg(label, sha256));
-        return;
-    }
-
-    const auto eventFor = [&](const YaraScanner::Target& t, bool alive) {
-        SecurityEvent e;
-        e.type = bulwark::EventType::ProcessCreate;
-        e.actorPid = alive ? t.pid : 0;
-        if (alive)
-            e.actorCreationFileTime = t.creationFileTime;
-        e.actorPath = t.path;
-        e.target = t.path;
-        e.actorHash = sha256.toUpper();
-        e.commandLine = t.commandLine;
-        e.parentPid = t.parentPid;
-        e.parentPath = t.parentPath;
-        e.userModeObserved = true;
-        e.hasThreatIndicator = true;
-        e.riskScore = 95;
-        e.detail = label;
-        e.yaraLevel = SecurityEvent::YaraMalicious;
-        e.yaraRule = verdict.rule;
-        e.yaraAuthor = verdict.author;
-        e.yaraMatchCount = verdict.matchCount;
-        e.addEvidence(QStringLiteral("YaraScanner"), bulwark::EvidenceKind::HardIndicator,
-                      QStringLiteral("程序文件命中已验证的 YARA 家族规则:%1%2")
-                          .arg(verdict.rule, verdict.author.isEmpty()
-                                                 ? QString()
-                                                 : QStringLiteral("(作者 %1)").arg(verdict.author)),
-                      0);
-        return e;
-    };
-
-    int handled = 0;
-    for (const YaraScanner::Target& t : targets) {
-        const bool alive = t.pid > 4 && t.creationFileTime != 0
-            && ProcessInspector::isCurrentProcessInstance(
-                   ProcessInspector::ProcessInstance{t.pid, t.creationFileTime, t.path});
-        if (!alive)
-            continue;
-        handleSweptMalicious(eventFor(t, true), VerdictSource::Heuristic);
-        ++handled;
-    }
-    if (handled == 0 && !targets.isEmpty())
-        handleSweptMalicious(eventFor(targets.first(), false), VerdictSource::Heuristic);
 }
 
 void Worker::recordEvent(const SecurityEvent& e, VerdictAction action, VerdictSource source,

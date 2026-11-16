@@ -202,12 +202,6 @@ QJsonObject SecurityEvent::toJson() const {
     if (isInstaller) o["isInstaller"] = true;
     o["fileDescription"] = fileDescription;
     if (!originalFileName.isEmpty()) o["originalFileName"] = originalFileName;
-    if (yaraLevel != YaraNone) {
-        o["yaraLevel"] = yaraLevel;
-        o["yaraRule"] = yaraRule;
-        o["yaraAuthor"] = yaraAuthor;
-        o["yaraMatchCount"] = yaraMatchCount;
-    }
     if (!threatSnippets.isEmpty()) {
         QJsonArray sn;
         for (const ThreatSnippet& s : threatSnippets) sn.append(s.toJson());
@@ -285,10 +279,6 @@ SecurityEvent SecurityEvent::fromJson(const QJsonObject& o) {
     e.isInstaller = getBool(o, "isInstaller");
     e.fileDescription = getStr(o, "fileDescription");
     e.originalFileName = getStr(o, "originalFileName");
-    e.yaraLevel = qBound(static_cast<int>(YaraNone), getInt(o, "yaraLevel"), static_cast<int>(YaraMalicious));
-    e.yaraRule = getStr(o, "yaraRule");
-    e.yaraAuthor = getStr(o, "yaraAuthor");
-    e.yaraMatchCount = getInt(o, "yaraMatchCount");
     for (const QJsonValue& v : o.value(QLatin1String("threatSnippets")).toArray())
         e.addSnippet(ThreatSnippet::fromJson(v.toObject()));
 

@@ -234,12 +234,6 @@ void IpcClient::dispatch(const QString& line)
     case IpcMessageType::SystemBoostResponse:
         emit systemBoostReceived(msg->payloadAs<SystemBoostResultPayload>());
         break;
-    case IpcMessageType::YaraRulesStatusResponse:
-        emit yaraStatusReceived(msg->payloadAs<YaraRulesStatusPayload>());
-        break;
-    case IpcMessageType::YaraRulesActionResponse:
-        emit yaraActionResult(msg->payloadAs<YaraRulesActionResultPayload>());
-        break;
     case IpcMessageType::NetTrafficSnapshot:
         emit netTrafficReceived(msg->payloadAs<NetTrafficSnapshotPayload>());
         break;
@@ -436,20 +430,6 @@ QUuid IpcClient::requestSystemBoost()
 {
     SystemBoostRequestPayload p;
     send(IpcMessage::from(IpcMessageType::SystemBoostRequest, p));
-    return p.requestId;
-}
-
-void IpcClient::requestYaraStatus()
-{
-    send(IpcMessage::create(IpcMessageType::YaraRulesStatusRequest, {}));
-}
-
-QUuid IpcClient::yaraAction(const QString& action, bool enabled)
-{
-    YaraRulesActionRequestPayload p;
-    p.action = action;
-    p.enabled = enabled;
-    send(IpcMessage::from(IpcMessageType::YaraRulesActionRequest, p));
     return p.requestId;
 }
 

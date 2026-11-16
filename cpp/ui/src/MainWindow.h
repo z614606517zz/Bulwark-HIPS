@@ -43,7 +43,6 @@ namespace bulwark {
 struct SecurityEvent;
 namespace ipc {
 struct RemediationReportPayload;
-struct YaraRulesStatusPayload;
 }
 }
 
@@ -105,7 +104,6 @@ private slots:
                              bulwark::EnforcementOutcome enforcement,
                              bool timeoutBlock, bool execBlocked);
     void onRemediationReport(const bulwark::ipc::RemediationReportPayload& report);
-    void onYaraStatus(const bulwark::ipc::YaraRulesStatusPayload& status);
     void setConnected(bool connected);
     void quitApp();
 
@@ -168,9 +166,6 @@ private:
     bool m_pressOnChrome = false;
 
     QHash<QString, int> m_unread;
-    // YARA 最近命中(SHA-256 | 时间)。连上服务后的第一份状态只作基线,之后新出现的才提醒。
-    QSet<QString> m_yaraSeen;
-    bool m_yaraBaseline = false;
 
     // 防护状态所依赖的真实状态。默认按「未知」呈现,绝不默认说"已开启"。
     bool m_svcConnected = false;

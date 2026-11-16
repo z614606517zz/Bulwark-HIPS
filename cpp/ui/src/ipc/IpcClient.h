@@ -56,8 +56,6 @@ public:
     QUuid requestProcesses(bool includeCommandLine = true, bool resolveOrigin = true);
     void processAction(const bulwark::ipc::ProcessActionRequestPayload& p);
     QUuid requestSystemBoost();
-    void requestYaraStatus();
-    QUuid yaraAction(const QString& action, bool enabled = false);
     void setNetTrafficSubscribed(bool on, const QList<int>& focusPids = {});
     
     void manualQuarantine(const QString& path);
@@ -94,8 +92,6 @@ signals:
     void processListReceived(const bulwark::ipc::ProcessListResponsePayload& payload);
     void processActionResult(const bulwark::ipc::ProcessActionResultPayload& result);
     void systemBoostReceived(const bulwark::ipc::SystemBoostResultPayload& result);
-    void yaraStatusReceived(const bulwark::ipc::YaraRulesStatusPayload& status);
-    void yaraActionResult(const bulwark::ipc::YaraRulesActionResultPayload& result);
     void netTrafficReceived(const bulwark::ipc::NetTrafficSnapshotPayload& snapshot);
     void intelResult(const bulwark::ipc::IntelRefreshResultPayload& result);
     void aiRulesSuggested(const QList<AiSuggestedRule>& rules);

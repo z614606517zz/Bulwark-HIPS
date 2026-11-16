@@ -79,12 +79,6 @@ QString pickMeaning(const SecurityEvent& e) {
                  "添加开机启动项。本产品并不拦这些,只是在动手之前让你确认一次 —— "
                  "因为「把木马伪装成安装包」正是最常见的一种投递方式。");
 
-    if (e.yaraLevel == SecurityEvent::YaraMalicious && !e.yaraRule.isEmpty())
-        return u("这个程序文件的内容命中了已验证的恶意软件家族规则「") + e.yaraRule
-             + u("」。这类规则描述的是某个已知家族在文件里留下的固定特征,"
-                 "并且事先在正常软件上核对过不会误中 —— 它说明的是「这个文件是什么」,"
-                 "而不只是「它此刻做了什么」。");
-
     if (e.ransomwareContainmentRequired || hasTechnique(e, "T1486"))
         return u("这个程序正在短时间内大量改写你的文档,这是勒索软件加密文件时的典型形态。"
                  "勒索的破坏是不可逆的:一旦文件被加密,没有密钥就恢复不了,所以这里不能等看清楚再说。");
@@ -170,11 +164,6 @@ QString pickMeaning(const SecurityEvent& e) {
     if (!e.hasThreatIndicator && e.riskScore < ThreatDetector::Suspicious)
         return u("目前没有发现可以定性的恶意行为特征。这条提示属于「先问一声」"
                  "而不是「检出了威胁」:具体依据见上方「为什么提示」。");
-
-    if (e.yaraLevel == SecurityEvent::YaraSuspicious && !e.yaraRule.isEmpty())
-        return u("这个程序文件命中了特征规则「") + e.yaraRule
-             + u("」。这条规则没有在正常软件上核对过,单凭它不能定性;"
-                 "是它和其他可疑迹象叠在一起,才让这次操作需要你确认。");
 
     // 兜不住具体手法时,按事件类型给一个不过度解读的说法。宁可笼统,也不编。
     switch (e.type) {

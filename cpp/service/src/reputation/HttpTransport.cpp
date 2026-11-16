@@ -183,23 +183,6 @@ std::pair<int, QString> HttpTransport::postJson(const QString& rawUrl, const QSt
 #endif
 }
 
-std::pair<int, QByteArray> HttpTransport::getBytes(const QString& rawUrl, const QStringList& headers,
-                                                   int timeoutSeconds, int maxBytes)
-{
-    const QUrl url(rawUrl);
-    if (!checkTarget(url, rawUrl))
-        return {0, QByteArray()};
-#ifdef Q_OS_WIN
-    return winHttpSend(L"GET", url, QByteArray(), headers, timeoutSeconds, std::max(1, maxBytes));
-#else
-    Q_UNUSED(headers);
-    Q_UNUSED(timeoutSeconds);
-    Q_UNUSED(maxBytes);
-    diag(QStringLiteral("当前 HTTP 传输实现仅支持 Windows"));
-    return {0, QByteArray()};
-#endif
-}
-
 void HttpTransport::diag(const QString& line)
 {
     static QMutex mutex;

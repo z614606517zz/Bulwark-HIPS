@@ -41,6 +41,15 @@ add_test(NAME service_has_no_ai_verdict_client
                  -P "${CMAKE_CURRENT_SOURCE_DIR}/check_no_ai_verdict_client.cmake")
 set_tests_properties(service_has_no_ai_verdict_client PROPERTIES LABELS "service;regression")
 
+add_test(NAME service_has_no_yara_feature
+         COMMAND ${CMAKE_COMMAND} "-DEXE=$<TARGET_FILE:bulwark_service>"
+                 -P "${CMAKE_CURRENT_SOURCE_DIR}/check_no_yara_feature.cmake")
+add_test(NAME ui_has_no_yara_feature
+         COMMAND ${CMAKE_COMMAND} "-DEXE=$<TARGET_FILE:bulwark_ui>"
+                 -P "${CMAKE_CURRENT_SOURCE_DIR}/check_no_yara_feature.cmake")
+set_tests_properties(service_has_no_yara_feature PROPERTIES LABELS "service;regression")
+set_tests_properties(ui_has_no_yara_feature PROPERTIES LABELS "ui;regression")
+
 get_target_property(_blw_qtcore_loc Qt6::Core LOCATION)
 get_filename_component(_blw_qt_bin "${_blw_qtcore_loc}" DIRECTORY)
 
@@ -203,31 +212,6 @@ add_test(NAME service_pure_policy_unit COMMAND service_pure_policy_unit)
 set_tests_properties(service_pure_policy_unit PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_blw_qt_bin}"
     LABELS "service;amsi;fileless;policy")
-
-# YARA 规则更新的排期:辅助程序晚于失败的检查才就位时不等失败退避;其他失败照常退避。不联网。
-add_executable(yara_updater_schedule_unit
-    YaraRuleUpdaterTest.cpp
-    "${CMAKE_CURRENT_SOURCE_DIR}/../service/src/YaraRuleUpdater.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../service/src/YaraForgeRelease.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../service/src/YaraHelperProcess.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../service/src/reputation/HttpTransport.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../service/src/Logger.cpp")
-target_include_directories(yara_updater_schedule_unit PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/../service/include")
-target_link_libraries(yara_updater_schedule_unit PRIVATE bulwark_shared Qt6::Core advapi32)
-target_compile_definitions(yara_updater_schedule_unit PRIVATE BULWARK_YARAX_VERSION="")
-target_compile_features(yara_updater_schedule_unit PRIVATE cxx_std_20)
-set_target_properties(yara_updater_schedule_unit PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
-if(MSVC)
-    target_compile_options(yara_updater_schedule_unit PRIVATE /W4 /permissive- /utf-8)
-    target_compile_definitions(yara_updater_schedule_unit PRIVATE UNICODE _UNICODE)
-else()
-    target_compile_options(yara_updater_schedule_unit PRIVATE -Wall -Wextra)
-endif()
-add_test(NAME yara_updater_schedule_unit COMMAND yara_updater_schedule_unit)
-set_tests_properties(yara_updater_schedule_unit PROPERTIES
-    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_blw_qt_bin}"
-    LABELS "service;yara")
 
 # 「系统目录 / Program Files 即可信」只认系统盘;经控制管道写入的放行规则受服务端闸门约束。
 add_executable(trust_path_policy_unit TrustPathPolicyTest.cpp)

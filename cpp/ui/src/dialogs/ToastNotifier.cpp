@@ -11,7 +11,6 @@
 #include "dialogs/ExplainCard.h"
 #include "dialogs/ThreatCodeView.h"
 #include "dialogs/ToastWindow.h"
-#include "dialogs/YaraView.h"
 #include "design/Theme.h"
 #include "ipc/IpcClient.h"
 
@@ -96,11 +95,6 @@ void ToastNotifier::showBlock(const SecurityEvent& e, bulwark::EnforcementOutcom
     }
     m_lastBlockToastMs = now;
 
-    if (e.yaraLevel == SecurityEvent::YaraMalicious && !e.yaraRule.trimmed().isEmpty()) {
-        showYaraBlock(e, enforcement, execBlocked);
-        return;
-    }
-
     const evtfmt::Threat threat = evtfmt::threatOf(e);
     QString source = threat.basis;
     // 内核前拦是已发生的事实,引擎可能同时判了放行(证据链里只有「健康签名,直接放行」)。
@@ -154,8 +148,7 @@ void ToastNotifier::showBlock(const SecurityEvent& e, bulwark::EnforcementOutcom
     QWidget* codeBlock = threatcode::build(e, evtfmt::riskColor(e.riskScore), codeOpt);
 
     // 主按钮一律是「查看详情」。撤销 = 把这个程序整体加白 1 小时,不能是一张拦截通知上唯一醒目的
-    // 按钮让人顺手点掉:降成次要按钮,点了还要再确认一次(见 undoBlockByTrust),
-    // 与特征识别战报(showYaraBlock)同一套摆法。
+    // 按钮让人顺手点掉:降成次要按钮,点了还要再确认一次(见 undoBlockByTrust)。
     auto* t = new ToastWindow(kind, heading, evtfmt::arrowLine(e), meta, e.techniques,
                               ((enforced && !undoable) ? 8000 : 12000) + (codeBlock ? 4000 : 0),
                               disp.text, u("查看详情 ›"));
@@ -245,45 +238,6 @@ void ToastNotifier::showBlock(const SecurityEvent& e, bulwark::EnforcementOutcom
     emit blockPresented(e.actorPath, enforcement);
 }
 
-// 特征识别战报:后台扫描认出了已验证的恶意家族,进程已经在跑 —— 与兜底扫描同一条处置路径。
-// 主角是「它是什么」(家族、来源、文件指纹),不是一句「启动进程 → …」;撤销降成次要按钮,
-// 命中的是事先核对过不会误中的家族规则,不该让人顺手点掉。说明只用离线解释,不交给 AI 改写。
-void ToastNotifier::showYaraBlock(const SecurityEvent& e, bulwark::EnforcementOutcome enforcement, bool execBlocked)
-{
-    using EO = bulwark::EnforcementOutcome;
-    const bool enforced = !evtfmt::needsManualAction(enforcement);
-    const bool k = !theme::mecha();
-    const ToastWindow::Kind kind = enforcement == EO::AlertedOnly ? ToastWindow::Kind::BlockAlertedOnly
-                                 : enforcement == EO::Failed      ? ToastWindow::Kind::BlockFailed
-                                                                  : ToastWindow::Kind::Block;
-    const QString heading = enforced ? (k ? u("小垒认出了一个坏家伙") : u("特征识别 · 目标已锁定"))
-                                     : (k ? u("小垒认出了坏家伙,但没能拦住它") : u("特征识别 · 目标未能清除"));
-    const QString name = QFileInfo(e.actorPath).fileName();
-    const QString sentence = u("%1 的文件内容命中了恶意家族特征").arg(name.isEmpty() ? u("该程序") : name);
-    const evtfmt::Badge disp = evtfmt::disposition(bulwark::VerdictAction::Block, enforcement);
-
-    auto* t = new ToastWindow(kind, heading, sentence, QString(), {}, enforced ? 14000 : 20000, QString(),
-                              u("查看详情 ›"));
-    t->setCode(yaraview::reportHero(e, enforcement, execBlocked, disp.text));   // 必须先于 present()
-    const QString actorPath = e.actorPath.trimmed();
-    const bool pathLike = (actorPath.size() >= 2 && actorPath.at(1) == QLatin1Char(':'))
-                          || actorPath.startsWith(QLatin1Char('\\'));
-    if (pathLike && enforced) {
-        t->setSecondaryAction(u("这是误报 · 信任 1 小时"));
-        connect(t, &ToastWindow::secondaryClicked, this,
-                [this, actorPath](ToastWindow*) { undoBlockByTrust(actorPath); });
-    }
-    explaincard::Options opt;
-    opt.compact = true;
-    opt.omitAdvice = true;
-    if (QWidget* card = explaincard::build(e, opt)) {
-        t->setInsight(card);
-        t->settleInsight(kLocalReadMs);
-    }
-    present(t, true, true, !enforced);
-    emit blockPresented(e.actorPath, enforcement);
-}
-
 void ToastNotifier::undoBlockByTrust(const QString& actorPath)
 {
     const QString path = actorPath.trimmed();
@@ -349,11 +303,10 @@ void ToastNotifier::confirmUndoBlock(const QString& path)
 bool ToastNotifier::isGuardedWriteDenial(const SecurityEvent& e, bulwark::EnforcementOutcome enforcement,
                                          bool timeoutBlock, bool execBlocked)
 {
-    // 引擎自己也认为可疑的(硬指标、特征命中、风险分到了界面标红的档位)仍按拦截通知弹。
+    // 引擎自己也认为可疑的(硬指标、风险分到了界面标红的档位)仍按拦截通知弹。
     return e.kernelBlocked && enforcement == bulwark::EnforcementOutcome::KernelBlocked
         && !timeoutBlock && !execBlocked
         && !e.hasThreatIndicator && e.riskScore < 50
-        && e.yaraLevel != SecurityEvent::YaraMalicious
         && e.detail.contains(u("受保护目录"));
 }
 

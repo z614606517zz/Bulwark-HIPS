@@ -59,9 +59,6 @@ public:
     std::function<bulwark::ipc::HardeningStatusResponsePayload()> hardeningStatusRequested;
     std::function<bulwark::ipc::HardeningActionResultPayload(
         const bulwark::ipc::HardeningActionRequestPayload&)>      hardeningActionRequested;
-    std::function<bulwark::ipc::YaraRulesStatusPayload()>    yaraStatusRequested;
-    std::function<bulwark::ipc::YaraRulesActionResultPayload(
-        const bulwark::ipc::YaraRulesActionRequestPayload&)> yaraActionRequested;
     std::function<void(int)>                                 uiProcessConnected;
     std::function<void(bool anySubscriber)>                  netTrafficSubscriptionChanged;
 
@@ -84,7 +81,6 @@ public:
     void sendAttackGraph(const bulwark::ipc::AttackGraphResponsePayload& payload);
     void sendProcessList(const bulwark::ipc::ProcessListResponsePayload& payload);
     void sendSystemBoost(const bulwark::ipc::SystemBoostResultPayload& payload);
-    void sendYaraStatus(const bulwark::ipc::YaraRulesStatusPayload& p);
 
     void sendRules(QLocalSocket* only = nullptr);
     void sendSettings(QLocalSocket* only = nullptr);

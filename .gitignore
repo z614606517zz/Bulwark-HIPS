@@ -22,9 +22,6 @@ msbuild.log
 msbuild.err
 msbuild.wrn
 
-# Third-party binary packages fetched by cpp/scripts/fetch-yara-x.ps1
-cpp/third_party/yara-x/
-
 # IDE and editor state
 .vs/
 .vscode/

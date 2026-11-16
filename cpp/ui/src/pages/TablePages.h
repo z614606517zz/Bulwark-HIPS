@@ -14,6 +14,5 @@ QWidget* softwareCatalog();
 QWidget* quarantine(IpcClient* ipc);
 QWidget* persistence(IpcClient* ipc);
 QWidget* hardening(IpcClient* ipc);
-QWidget* yaraRules(IpcClient* ipc);
 
 }

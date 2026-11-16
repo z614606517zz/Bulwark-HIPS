@@ -17,7 +17,6 @@ inline QColor page(const QString& key)
     if (is(nav::Hardening))                           return theme::cyan();
     if (is(nav::Rules))                               return theme::violet();
     if (is(nav::Trust) || is(nav::SoftwareCatalog))   return theme::olive();
-    if (is(nav::YaraRules))                           return theme::accentAlt();
     return theme::accent();
 }
 

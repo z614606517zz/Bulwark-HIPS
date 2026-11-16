@@ -141,14 +141,6 @@ struct SecurityEvent {
     QStringList scriptFileHits;
     QStringList scriptFileReasons;
 
-    // 主体程序文件的 YARA 扫描结论,富化阶段按 actorHash 从扫描缓存取。可疑:命中的规则没在
-    // 干净样本上验证过,只作弱信号;恶意:命中已验证的家族规则(YaraRules.MaliciousRules),记硬指标。
-    enum YaraLevel { YaraNone = 0, YaraSuspicious = 1, YaraMalicious = 2 };
-    int yaraLevel = YaraNone;
-    QString yaraRule;
-    QString yaraAuthor;
-    int yaraMatchCount = 0;
-
     QVector<ThreatSnippet> threatSnippets;
 
     bool addSnippet(const ThreatSnippet& s);

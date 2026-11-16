@@ -41,8 +41,6 @@
 #include "bulwark/service/monitoring/ProcessOriginResolver.h"
 #include "bulwark/service/SystemBoost.h"
 #include "bulwark/service/reputation/ThreatFoxFeed.h"
-#include "bulwark/service/YaraRuleUpdater.h"
-#include "bulwark/service/YaraScanner.h"
 #include "bulwark/service/AmsiBridge.h"
 
 #include "bulwark/engine/RuleEngine.h"
@@ -392,6 +390,43 @@ QList<LegacyCacheRemoval> removeLegacyAiVerdictCaches(const QString& dir) {
     return out;
 }
 
+// 不跟随链接:遇到重解析点只摘掉链接本身,不动它指向的内容。
+bool removeTreeWithoutFollowingLinks(const QString& path) {
+    const std::wstring native = QDir::toNativeSeparators(path).toStdWString();
+    const DWORD attrs = ::GetFileAttributesW(native.c_str());
+    if (attrs == INVALID_FILE_ATTRIBUTES)
+        return true;
+    if (attrs & FILE_ATTRIBUTE_READONLY)
+        ::SetFileAttributesW(native.c_str(), attrs & ~FILE_ATTRIBUTE_READONLY);
+    if (!(attrs & FILE_ATTRIBUTE_DIRECTORY))
+        return ::DeleteFileW(native.c_str()) != 0;
+    if (attrs & FILE_ATTRIBUTE_REPARSE_POINT)
+        return ::RemoveDirectoryW(native.c_str()) != 0;
+    bool ok = true;
+    WIN32_FIND_DATAW fd;
+    const HANDLE find = ::FindFirstFileW((native + L"\\*").c_str(), &fd);
+    if (find != INVALID_HANDLE_VALUE) {
+        do {
+            const QString name = QString::fromWCharArray(fd.cFileName);
+            if (name == QLatin1String(".") || name == QLatin1String(".."))
+                continue;
+            ok = removeTreeWithoutFollowingLinks(path + QLatin1Char('/') + name) && ok;
+        } while (::FindNextFileW(find, &fd));
+        ::FindClose(find);
+    }
+    return ::RemoveDirectoryW(native.c_str()) != 0 && ok;
+}
+
+// 旧版 YARA 功能留在数据目录里的规则包与更新状态(整个 yara 子目录)。本版没有这项功能,启动时删掉。
+QList<LegacyCacheRemoval> removeLegacyYaraData(const QString& dir) {
+    QList<LegacyCacheRemoval> out;
+    const QString path = QDir(dir).filePath(QStringLiteral("yara"));
+    const std::wstring native = QDir::toNativeSeparators(path).toStdWString();
+    if (::GetFileAttributesW(native.c_str()) != INVALID_FILE_ATTRIBUTES)
+        out.append(LegacyCacheRemoval{path, removeTreeWithoutFollowingLinks(path)});
+    return out;
+}
+
 }
 
 int runServiceRegressionSelfTest() {
@@ -420,6 +455,44 @@ int runServiceRegressionSelfTest() {
         check(gone, QStringLiteral("启动时删掉旧版「AI 全权裁决」的缓存 ai-verdict-cache.json / ai-verdict-share.json"));
         check(removeLegacyAiVerdictCaches(dir.path()).isEmpty(),
               QStringLiteral("没有旧缓存时,启动清理什么也不做"));
+    }
+    {
+        QTemporaryDir dir;
+        QTemporaryDir outside;
+        const QDir root(dir.path());
+        const QString kept = QDir(outside.path()).filePath(QStringLiteral("keep.txt"));
+        const auto put = [](const QString& path) {
+            QFile f(path);
+            return f.open(QIODevice::WriteOnly) && f.write("x") == 1;
+        };
+        const bool made = dir.isValid() && outside.isValid()
+            && root.mkpath(QStringLiteral("yara/rules")) && root.mkpath(QStringLiteral("yara/staging"))
+            && put(root.filePath(QStringLiteral("yara/state.json")))
+            && put(root.filePath(QStringLiteral("yara/rules/yara-forge-core.yarc")))
+            && put(root.filePath(QStringLiteral("yara/staging/report.json")))
+            && put(root.filePath(QStringLiteral("rules.json")))
+            && put(kept);
+        // 目录联接不需要特权就能建:清理只能摘掉联接,不能删到它指向的目录里去。
+        QProcess mklink;
+        mklink.setStandardOutputFile(QProcess::nullDevice());
+        mklink.setStandardErrorFile(QProcess::nullDevice());
+        mklink.start(QDir(qEnvironmentVariable("SystemRoot")).filePath(QStringLiteral("System32/cmd.exe")),
+                     {QStringLiteral("/c"), QStringLiteral("mklink"), QStringLiteral("/J"),
+                      QDir::toNativeSeparators(root.filePath(QStringLiteral("yara/link"))),
+                      QDir::toNativeSeparators(outside.path())});
+        const bool linked = made && mklink.waitForFinished(10000) && mklink.exitStatus() == QProcess::NormalExit
+            && mklink.exitCode() == 0 && QFile::exists(root.filePath(QStringLiteral("yara/link/keep.txt")));
+        const QList<LegacyCacheRemoval> removed = removeLegacyYaraData(dir.path());
+        check(made && removed.size() == 1 && removed.first().removed
+                  && !QFileInfo::exists(root.filePath(QStringLiteral("yara")))
+                  && QFile::exists(root.filePath(QStringLiteral("rules.json"))),
+              QStringLiteral("启动时删掉旧版 YARA 功能留下的 yara 目录,旁边的 rules.json 不动"));
+        if (linked)
+            check(QFile::exists(kept), QStringLiteral("yara 目录里的目录联接只被摘掉,它指向的目录内容不动"));
+        else
+            out << "  SKIP " << QStringLiteral("没能建出目录联接,跳过「清理不跟随链接」的检查") << "\n";
+        check(removeLegacyYaraData(dir.path()).isEmpty(),
+              QStringLiteral("没有旧的 yara 目录时,启动清理什么也不做"));
     }
     {
         QJsonObject o;
@@ -1583,6 +1656,12 @@ static int serviceRun(int argc, char** argv) {
             else
                 log.warning(QStringLiteral("旧版「AI 全权裁决」的缓存 %1 删除失败;本版不读取它,可以手动删除。").arg(r.path));
         }
+        for (const LegacyCacheRemoval& r : removeLegacyYaraData(programDataDir())) {
+            if (r.removed)
+                log.info(QStringLiteral("已删除旧版 YARA 功能留下的规则目录 %1,本版没有这项功能。").arg(r.path));
+            else
+                log.warning(QStringLiteral("旧版 YARA 功能留下的规则目录 %1 没能删干净;本版不读取它,可以手动删除。").arg(r.path));
+        }
     }
 
     bulwark::engine::RuleEngine engine;
@@ -2510,50 +2589,6 @@ static int serviceRun(int argc, char** argv) {
         return res;
     };
 
-    const QString yaracPath =
-        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("bulwark_yarac.exe"));
-    YaraRuleUpdater yaraRules(options.YaraRules, programDataDir() + QStringLiteral("/yara"), yaracPath);
-    YaraScanner yaraScanner(options.YaraRules, yaracPath);
-    {
-        // 优先用联网更新编出的规则;还没有时退回安装包内置的那份(打包时预编译)。
-        const QString bundled =
-            QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("rules/yara-forge-core.yarc"));
-        const bulwark::ipc::YaraRulesStatusPayload st = yaraRules.status();
-        if (!st.rulesPath.isEmpty() && QFileInfo::exists(st.rulesPath)) {
-            yaraScanner.setRules(st.rulesPath, QStringLiteral("YARA Forge %1").arg(st.releaseTag));
-        } else if (QFileInfo::exists(bundled)) {
-            QFile report(QFileInfo(bundled).dir().filePath(QStringLiteral("yara-forge-core.json")));
-            const QString created = report.open(QIODevice::ReadOnly)
-                ? QJsonDocument::fromJson(report.readAll()).object().value(QStringLiteral("packageCreated"))
-                      .toString().trimmed()
-                : QString();
-            yaraScanner.setRules(QDir::toNativeSeparators(bundled),
-                                 created.isEmpty() ? QStringLiteral("安装包内置规则")
-                                                   : QStringLiteral("安装包内置 · YARA Forge %1").arg(created));
-        } else {
-            yaraScanner.setRules(QString(), QString());
-        }
-    }
-    yaraRules.setRulesInstalled(
-        [&yaraScanner](const QString& path, const QString& label) { yaraScanner.setRules(path, label); });
-    const auto withScanStatus = [&yaraScanner](bulwark::ipc::YaraRulesStatusPayload s) {
-        s.scan = yaraScanner.status();
-        s.usedForDetection = s.scan.enabled && !s.scan.rulesLabel.isEmpty();
-        return s;
-    };
-    yaraRules.setStatusChanged([&ipc, withScanStatus](const bulwark::ipc::YaraRulesStatusPayload& s) {
-        ipc.sendYaraStatus(withScanStatus(s));
-    });
-    yaraScanner.setChangedCallback([&ipc, &yaraRules, withScanStatus] {
-        QMetaObject::invokeMethod(
-            qApp, [&ipc, &yaraRules, withScanStatus] { ipc.sendYaraStatus(withScanStatus(yaraRules.status())); },
-            Qt::QueuedConnection);
-    });
-    ipc.yaraStatusRequested = [&yaraRules, withScanStatus] { return withScanStatus(yaraRules.status()); };
-    ipc.yaraActionRequested = [&yaraRules](const bulwark::ipc::YaraRulesActionRequestPayload& req) {
-        return yaraRules.handleAction(req);
-    };
-
     if (!ipc.start())
         log.warning(QStringLiteral("IPC 控制管道监听失败;UI 将无法连接。"));
 
@@ -2919,7 +2954,6 @@ static int serviceRun(int argc, char** argv) {
     worker.setAlertExporter(&alertExporter);
     worker.setContainment(&containment);
     worker.setFreezeOnDetect(options.UserModeFreezeOnDetect);
-    worker.setYaraScanner(&yaraScanner);
 
     if (coordinatorPtr) {
         QTimer::singleShot(60000, coordinatorPtr, [coordinatorPtr, &log]() {
@@ -3002,8 +3036,6 @@ static int serviceRun(int argc, char** argv) {
         });
 
     intelFeed.start();
-    yaraRules.start();
-    yaraScanner.start();
     const bool standbyAtStart = settings.protectionFollowsUi && ipc.clientCount() == 0;
 
     coordinator->configureBehaviorMonitor(settings.userModeBehaviorMonitor, settings.ransomwareCanaryEnabled);
@@ -3185,13 +3217,6 @@ static int serviceRun(int argc, char** argv) {
     amsiBridge.setReporter(nullptr);
 
     intelFeed.stop();
-    yaraRules.stop();
-    yaraScanner.stop();
-    yaraRules.setRulesInstalled(nullptr);
-    yaraScanner.setChangedCallback(nullptr);
-    yaraScanner.setMaliciousCallback(nullptr);
-    ipc.yaraStatusRequested = nullptr;
-    ipc.yaraActionRequested = nullptr;
     coordinator->stop();
 
     ipc.hardeningStatusRequested = nullptr;

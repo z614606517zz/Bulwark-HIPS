@@ -445,7 +445,6 @@ inline QString evidenceCategory(const bulwark::Evidence& ev) {
     if (is("RemoteControlAnalyzer"))                    return u("远程控制");
     if (is("CommandObfuscationAnalyzer"))               return u("混淆载荷");
     if (is("ScriptAnalyzer") || is("ScriptFileAnalyzer")) return u("恶意脚本");
-    if (is("YaraScanner"))                              return u("YARA 特征");
     if (is("PersistenceAnalyzer"))                      return u("持久化");
     if (is("KillChainAnalyzer"))                        return u("攻击链");
     if (is("LaunchingParent"))                          return u("恶意发起方");

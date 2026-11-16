@@ -619,20 +619,6 @@ void enrichedFacts(const SecurityEvent& e, Scorer& sc) {
             first = false;
         }
     }
-    // 不管命中几条规则都只记一条证据、同一个来源:YARA 在互证计数里只算一个分析器 / 一组硬证据。
-    if (e.yaraLevel != SecurityEvent::YaraNone && !e.yaraRule.isEmpty()) {
-        QString what = e.yaraRule;
-        if (!e.yaraAuthor.isEmpty())
-            what += u("(作者 %1)").arg(e.yaraAuthor);
-        if (e.yaraMatchCount > 1)
-            what += u(",共命中 %1 条规则").arg(e.yaraMatchCount);
-        if (e.yaraLevel == SecurityEvent::YaraMalicious)
-            sc.add(QStringLiteral("yara"), QStringLiteral("YaraScanner"), 90,
-                   u("程序文件命中已验证的 YARA 家族规则:") + what, true);
-        else
-            sc.add(QStringLiteral("yara"), QStringLiteral("YaraScanner"), 40,
-                   u("程序文件命中 YARA 规则:") + what + u("(规则未经干净样本验证,只作弱信号)"), false);
-    }
 }
 
 }

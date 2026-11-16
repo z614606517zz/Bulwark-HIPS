@@ -173,52 +173,6 @@ QList<Fixture> fixtures()
     return v;
 }
 
-// YARA 家族规则(YaraRules.MaliciousRules)命中:与 Worker::onYaraMalicious → handleSweptMalicious
-// 组出来的事件同形 —— 进程已经在跑,扫描结论回来后被结束、禁止再次运行、隔离。
-SecurityEvent yaraMaliciousEvent()
-{
-    SecurityEvent e;
-    e.type = EventType::ProcessCreate;
-    e.actorPid = 7316;
-    e.actorPath = QStringLiteral("C:\\Users\\u\\AppData\\Roaming\\WinUpdate\\winupd.exe");
-    e.target = e.actorPath;
-    e.actorHash = QStringLiteral("6F3B0C9E2D41A87F5C1E9B0A3D7F2E6C8B4A1D9E0F7C3B5A2E8D6C4B1A9F0E3D");
-    e.commandLine = QStringLiteral("winupd.exe -k netsvcs");
-    e.parentPid = 4120;
-    e.parentPath = QStringLiteral("C:\\Windows\\explorer.exe");
-    e.userModeObserved = true;
-    e.hasThreatIndicator = true;
-    e.riskScore = 95;
-    e.yaraLevel = SecurityEvent::YaraMalicious;
-    e.yaraRule = QStringLiteral("ELASTIC_Windows_Trojan_Remcos_B296E965");
-    e.yaraAuthor = QStringLiteral("Elastic Security");
-    e.yaraMatchCount = 2;
-    e.detail = QStringLiteral("YARA 家族规则命中:%1").arg(e.yaraRule);
-    e.addEvidence(QStringLiteral("YaraScanner"), EvidenceKind::HardIndicator,
-                  QStringLiteral("程序文件命中已验证的 YARA 家族规则:%1(作者 %2)").arg(e.yaraRule, e.yaraAuthor), 0);
-    e.addEvidence(QStringLiteral("Reputation"), EvidenceKind::HardIndicator,
-                  QStringLiteral("兜底扫描复查:已确认恶意(%1)").arg(e.detail), 0);
-    e.timestampUtc = nowUtc();
-    return e;
-}
-
-// 未经干净样本验证的规则命中(弱信号 40 分),叠加「聊天软件直接打开未签名程序」(内置规则会问)、本机首见。
-SecurityEvent yaraSuspiciousEvent()
-{
-    SecurityEvent e = proc(QStringLiteral("C:\\Users\\u\\Documents\\WeChat Files\\wxid_a1b2\\FileStorage\\File\\2026-03\\ProcHelper.exe"),
-                           QStringLiteral("ProcHelper.exe --hide --autostart"),
-                           QStringLiteral("C:\\Program Files\\Tencent\\WeChat\\WeChat.exe"),
-                           false, QString());
-    e.actorHash = QStringLiteral("B71E09D3C55A2F68E4019C7AB23D5E8F61C0A94D27B3E58F0C6A1D92E47B3C08");
-    e.isFirstSeen = true;
-    e.yaraLevel = SecurityEvent::YaraSuspicious;
-    e.yaraRule = QStringLiteral("DITEKSHEN_INDICATOR_SUSPICIOUS_EXE_Anti_Sandbox");
-    e.yaraAuthor = QStringLiteral("ditekSHen");
-    e.yaraMatchCount = 3;
-    e.timestampUtc = nowUtc();
-    return e;
-}
-
 void settle(int ms)
 {
     QElapsedTimer t;
@@ -314,7 +268,6 @@ QList<DefenseRule> demoTrust()
     return list;
 }
 
-ipc::YaraRulesStatusPayload demoYaraStatus();
 QPixmap crop(const QPixmap& full, const QRect& logical);
 
 // 给主窗口喂一份「防护正常、内核已连接、刚拦过一次」的假状态。
@@ -345,87 +298,11 @@ void feedDemo(IpcClient* client)
     emit client->eventLogReceived(logEntry(EventType::ProcessCreate, QStringLiteral("C:\\Users\\u\\AppData\\Roaming\\Sync\\sync_host.exe"),
                                            QStringLiteral("sync_host.exe --daemon"), VerdictAction::Block,
                                            EnforcementOutcome::AlertedOnly, 30));
-    emit client->yaraStatusReceived(demoYaraStatus());
     // 只给金刚:机甲 / 卡哇伊的预览图要和基线逐像素一致。放在最后,上面几条实时事件就不会叠进柱子。
     if (theme::titan()) {
         emit client->timelineReceived(demoTimeline());
         emit client->trustReceived(demoTrust());
     }
-}
-
-// 时间取进程内固定的一刻:同一份假状态发两次时,里面的命中被认作同一批。
-ipc::YaraRulesStatusPayload demoYaraStatus()
-{
-    static const QDateTime now = QDateTime::currentDateTimeUtc();
-    ipc::YaraRulesStatusPayload y;
-    y.featureEnabled = true;
-    y.autoUpdate = true;
-    y.compilerAvailable = true;
-    y.engine = QStringLiteral("YARA-X 1.23.0");
-    y.package = QStringLiteral("core");
-    y.releaseTag = QStringLiteral("20261103");
-    y.releasePublishedUtc = now.addDays(-3);
-    y.packageSha256 = QStringLiteral("be0d5a49d2a8cd37713f5a8c4e5a3c4235061242bc12240e18c69934fa47bb59");
-    y.packageBytes = 1744269;
-    y.rulesFound = 5133;
-    y.rulesCompiled = 5131;
-    y.rulesSkipped = 2;
-    y.compiledBytes = 8755369;
-    y.compileMs = 4849;
-    y.rulesPath = QStringLiteral("C:\\ProgramData\\Bulwark\\yara\\rules\\yara-forge-core.yarc");
-    y.dataDir = QStringLiteral("C:\\ProgramData\\Bulwark\\yara");
-    y.lastCheckUtc = now.addSecs(-3 * 3600);
-    y.lastSuccessUtc = y.lastCheckUtc;
-    y.nextCheckUtc = y.lastCheckUtc.addSecs(24 * 3600);
-    y.message = QString::fromUtf8("已更新到 YARA Forge 20261103:编译 5131 条规则,跳过 2 条。");
-    const auto source = [&y](const char* name, int rules) {
-        ipc::YaraRuleSourcePayload s;
-        s.repository = QString::fromLatin1(name);
-        s.rules = rules;
-        y.sources << s;
-    };
-    source("Malpedia", 1621);
-    source("Signature Base", 1067);
-    source("SEKOIA", 706);
-    source("DitekSHen", 608);
-    source("FireEye-RT", 148);
-    source("Volexity", 137);
-    source("Arkbird SOLG", 126);
-    source("CAPE", 122);
-    source("RussianPanda", 104);
-    source("GCTI", 89);
-    const auto skipped = [&y](const char* rule, int line, const char* reason) {
-        ipc::YaraSkippedRulePayload s;
-        s.rule = QString::fromLatin1(rule);
-        s.line = line;
-        s.reason = QString::fromUtf8(reason);
-        y.skipped << s;
-    };
-    skipped("VOLEXITY_Apt_Ico_Uta0040_B64_C2", 90300, "E034: potentially slow loop");
-    skipped("ELCEEF_EICAR_Encrypted_ZIP", 98808, "E034: potentially slow loop");
-    y.usedForDetection = true;
-    y.scan.enabled = true;
-    y.scan.state = QStringLiteral("ready");
-    y.scan.detail = QStringLiteral("YARA-X 1.23.0");
-    y.scan.rulesLabel = QStringLiteral("YARA Forge 20261103");
-    y.scan.rulesLoaded = 5131;
-    y.scan.scannedFiles = 214;
-    y.scan.suspiciousFiles = 2;
-    y.scan.failedScans = 3;
-    const auto hit = [&y](const char* path, const char* rule, const char* author, int minutesAgo) {
-        ipc::YaraScanHitPayload h;
-        h.timeUtc = now.addSecs(-60 * minutesAgo);
-        h.path = QString::fromLatin1(path);
-        h.rule = QString::fromLatin1(rule);
-        h.author = QString::fromLatin1(author);
-        h.level = QStringLiteral("suspicious");
-        h.matchCount = 1;
-        y.scan.recentHits << h;
-    };
-    hit("C:\\Users\\u\\Downloads\\tools\\nc64.exe", "SIGNATURE_BASE_HKTL_Netcat_Windows", "Florian Roth", 12);
-    hit("C:\\Users\\u\\AppData\\Local\\Temp\\upd\\svc_helper.exe", "DITEKSHEN_INDICATOR_EXE_Packed_Themida",
-        "ditekSHen", 95);
-    return y;
 }
 
 ipc::NetTrafficSnapshotPayload demoTraffic()
@@ -717,7 +594,7 @@ void renderMain(const QString& dir, const QString& prefix, int& failed)
     settle(400);
     const char* pages[] = {nav::Dashboard, nav::Events, nav::Timeline, nav::Boost, nav::Processes, nav::Rules,
                            nav::Trust, nav::SoftwareCatalog, nav::Quarantine, nav::Persistence, nav::Hardening,
-                           nav::YaraRules, nav::Settings};
+                           nav::Settings};
     for (const char* key : pages) {
         w->openPage(QString::fromLatin1(key));
         settle(380);
@@ -760,26 +637,6 @@ void renderMain(const QString& dir, const QString& prefix, int& failed)
         save(bot->grab(), dir, prefix + QStringLiteral("resident-ask"), failed);
         bot->say(robot::Mood::Guard, QString(), 1);
         settle(200);
-        // YARA 未验证规则的新命中:不弹窗,小垒冒气泡,「YARA 规则库」键帽记未读。
-        if (IpcClient* client = w->findChild<IpcClient*>()) {
-            ipc::YaraRulesStatusPayload y = demoYaraStatus();
-            ipc::YaraScanHitPayload h;
-            h.timeUtc = QDateTime::currentDateTimeUtc();
-            h.path = yaraSuspiciousEvent().actorPath;
-            h.sha256 = yaraSuspiciousEvent().actorHash;
-            h.rule = QStringLiteral("DITEKSHEN_INDICATOR_SUSPICIOUS_EXE_Anti_Sandbox");
-            h.author = QStringLiteral("ditekSHen");
-            h.level = QStringLiteral("suspicious");
-            h.matchCount = 3;
-            y.scan.recentHits.prepend(h);
-            ++y.scan.suspiciousFiles;
-            emit client->yaraStatusReceived(y);
-            settle(300);
-            save(bot->grab(), dir, prefix + QStringLiteral("resident-yara"), failed);
-            save(crop(w->grab(), QRect(0, 0, w->width(), 150)), dir, prefix + QStringLiteral("yara-badge"), failed);
-            bot->say(robot::Mood::Guard, QString(), 1);
-            settle(200);
-        }
         // 没话说、没有待下令时的样子(金刚:停着的小卡车)。
         save(bot->grab(), dir, prefix + QStringLiteral("resident-idle"), failed);
     }
@@ -1041,39 +898,6 @@ void renderPopups(const QString& dir, const QString& prefix, int& failed)
     if (!shot) {
         out() << "没有带硬指标的样例,两张确认框没有拍\n";
         ++failed;
-    }
-}
-
-// YARA 命中的两种弹窗:家族规则命中后的处置战报(走 ToastNotifier 的真实组卡路径),
-// 以及未验证规则命中 + 其他迹象触发的询问弹窗。
-void renderYara(const QString& dir, const QString& prefix, int& failed)
-{
-    {
-        ToastNotifier notifier;
-        notifier.showBlock(yaraMaliciousEvent(), EnforcementOutcome::Terminated, false, true);
-        settle(600);
-        for (QWidget* t : QApplication::topLevelWidgets()) {
-            auto* toast = qobject_cast<ToastWindow*>(t);
-            if (!toast || !toast->isVisible())
-                continue;
-            save(toast->grab(), dir, prefix + QStringLiteral("yara-toast-malicious"), failed);
-            toast->hide();
-            toast->deleteLater();
-        }
-        settle(100);
-    }
-    {
-        RuleEngine engine;
-        engine.loadRules(DefaultRules::build());
-        SecurityEvent e = yaraSuspiciousEvent();
-        const Verdict v = engine.evaluate(e);
-        PromptDialog dlg(e, nullptr, 30, v.action != VerdictAction::Block, nullptr);
-        dlg.show();
-        settle(500);
-        if (save(dlg.grab(), dir, prefix + QStringLiteral("yara-prompt-suspicious"), failed))
-            out() << "  裁决=" << verdictActionToString(v.action) << "  风险分=" << e.riskScore << "\n";
-        dlg.close();
-        settle(80);
     }
 }
 
@@ -1349,23 +1173,6 @@ void renderAnimPopups(const QString& dir, const QString& prefix, int& failed)
         toast->deleteLater();
         settle(100);
     }
-    // 特征识别战报:扫描屏的扫描线 + 主体里的钢印砸下、卡片一沉
-    {
-        ToastNotifier notifier;
-        notifier.showBlock(yaraMaliciousEvent(), EnforcementOutcome::Terminated, false, true);
-        ToastWindow* toast = nullptr;
-        for (QWidget* t : QApplication::topLevelWidgets())
-            if (auto* w = qobject_cast<ToastWindow*>(t); w && w->isVisible())
-                toast = w;
-        if (toast) {
-            FrameSheet sheet(txt("特征识别战报 · 扫描线 / 钢印砸下(每 70ms)"));
-            film(sheet, 16, 70, [&] { return toast->grab(); });
-            sheet.save(dir, prefix + QStringLiteral("anim-yara-toast"), failed, 4, 0.5);
-            toast->hide();
-            toast->deleteLater();
-        }
-        settle(100);
-    }
 }
 
 // 换装转场:走 UiHost 的真实路径,把新窗口与上面的转场浮层叠成一帧。
@@ -1569,12 +1376,10 @@ int main(int argc, char** argv)
         const QString prefix = key + QLatin1Char('-');
         if (only.contains(QStringLiteral("main")))
             renderMain(outDir, prefix, failed);
-        if (only.contains(QStringLiteral("popups")) || only.contains(QStringLiteral("yara"))) {
+        if (only.contains(QStringLiteral("popups"))) {
             // 时间固定,弹窗截图才可重复比对。
             setFixedNowUtcForTest(QDateTime(QDate(2026, 3, 1), QTime(12, 0, 0), QTimeZone::UTC));
-            if (only.contains(QStringLiteral("popups")))
-                renderPopups(outDir, prefix, failed);
-            renderYara(outDir, prefix, failed);
+            renderPopups(outDir, prefix, failed);
             setFixedNowUtcForTest(QDateTime());
         }
         out().flush();

@@ -66,33 +66,6 @@ struct ThreatFoxFeedOptions {
     QString resolveAuthKey() const;
 };
 
-// YARA Forge 规则包的自动下载与编译。Enabled 是部署期总开关(关掉则完全不联网);
-// AutoUpdate 只是初值,用户在界面上改过后以 %ProgramData%\Bulwark\yara\state.json 为准。
-struct YaraRulesOptions {
-    bool Enabled = true;
-    bool AutoUpdate = true;
-    QString Package = QStringLiteral("core");
-    QString ReleaseApiUrl = QStringLiteral("https://api.github.com/repos/YARAHQ/yara-forge/releases/latest");
-    QString DownloadUrlPrefix = QStringLiteral("https://github.com/YARAHQ/yara-forge/releases/download/");
-    int InitialDelaySeconds = 90;
-    int CheckIntervalHours = 24;
-    int DownloadTimeoutSeconds = 180;
-    int MaxDownloadMB = 32;
-    int CompileTimeoutSeconds = 900;
-    int CompilerMemoryLimitMB = 3072;
-
-    // 进程启动扫描:只扫进程创建事件的主体程序文件,结果按 SHA-256 缓存。
-    bool ScanProcesses = true;
-    int ScanMaxFileMB = 64;
-    int ScanTimeoutSeconds = 10;
-    int ScannerMemoryLimitMB = 1024;
-    // 在干净样本上验证过的家族规则(规则名,结尾 * 表示前缀):命中判恶意,结束进程并隔离。
-    // 其余规则命中一律判可疑,只作弱信号。默认空:没验证过的规则不会让本产品结束或隔离任何程序。
-    QStringList MaliciousRules;
-    // 误报规则,命中不计(写法同上)。
-    QStringList IgnoredRules;
-};
-
 struct BulwarkOptions {
     static constexpr const char* SectionName = "Bulwark";
 
@@ -139,7 +112,6 @@ struct BulwarkOptions {
     QStringList SensitiveDataGuardReaders;        // 全局读者(对所有条目放行)
 
     ThreatFoxFeedOptions ThreatFoxFeed;
-    YaraRulesOptions YaraRules;
 
     QStringList TrustedDirectories;
 

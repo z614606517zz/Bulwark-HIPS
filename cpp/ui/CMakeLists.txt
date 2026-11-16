@@ -113,7 +113,6 @@ set(BULWARK_UI_SOURCES
     src/pages/CardPages.h
     src/pages/SettingsPage.cpp
     src/pages/BoostPage.cpp
-    src/pages/YaraRulesPage.cpp
 
     src/dialogs/EventFormat.h
     src/dialogs/ExplainCard.h
@@ -140,8 +139,6 @@ set(BULWARK_UI_SOURCES
     src/dialogs/ProcessDetailDialog.cpp
     src/dialogs/ToastWindow.h
     src/dialogs/ToastWindow.cpp
-    src/dialogs/YaraView.h
-    src/dialogs/YaraView.cpp
     src/dialogs/ToastNotifier.h
     src/dialogs/ToastNotifier.cpp
 

@@ -25,7 +25,6 @@
 #include "bulwark/engine/RuleEngine.h"
 #include "bulwark/engine/ProcessChainTracker.h"
 #include "bulwark/service/Logger.h"
-#include "bulwark/service/YaraScanner.h"
 
 namespace bulwark::service {
 
@@ -70,9 +69,6 @@ public:
 
 
     void setContainment(UserModeProcessContainment* c) { containment_ = c; }
-
-    // 进程启动的 YARA 扫描。必须在 Worker 析构前 stop 掉扫描器:判恶意的回调会投递到本对象。
-    void setYaraScanner(YaraScanner* scanner);
 
     void setHardening(SystemHardening* h, bool denyExecute, bool regHarden,
                       bool regDenyWrite = false) {
@@ -170,10 +166,6 @@ private:
     QHash<QString, SideloadScan> tamperScanCache_;
 
     void scanScriptFileBody(bulwark::SecurityEvent& e);
-    void applyYaraVerdict(bulwark::SecurityEvent& e);
-    void onYaraMalicious(const QString& sha256, const YaraScanner::Verdict& verdict,
-                         const QVector<YaraScanner::Target>& targets);
-    YaraScanner* yara_ = nullptr;
     struct ScriptBodyScan {
         int score = 0;
         bool hard = false;

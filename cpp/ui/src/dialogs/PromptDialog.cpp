@@ -5,7 +5,6 @@
 #include "dialogs/AttackTimelineWindow.h"
 #include "dialogs/EventFormat.h"
 #include "dialogs/ThreatCodeView.h"
-#include "dialogs/YaraView.h"
 #include "design/Components.h"
 #include "design/Confirm.h"
 #include "design/CountdownBar.h"
@@ -224,14 +223,7 @@ PromptDialog::PromptDialog(const bulwark::SecurityEvent& event, QWidget* parent,
     evl->setSpacing(8);
     evl->setAlignment(Qt::AlignTop);
     evl->addWidget(ui::eyebrow(u("为什么提示")));
-    // YARA 命中单独成一条特征扫描卡,放在可滚动的原因区里:不额外撑高弹窗,小屏上也不会被挤扁。
-    QWidget* yaraStrip = yaraview::promptStrip(e);
-    if (yaraStrip)
-        evl->addWidget(yaraStrip);
-    QStringList reasons;
-    for (const QString& r : e.riskReasons)
-        if (!yaraStrip || !yaraview::isYaraReason(r))
-            reasons << r;
+    const QStringList& reasons = e.riskReasons;
     constexpr int kMaxReasons = 6;
     int shown = 0;
     for (const QString& r : std::as_const(reasons)) {
@@ -242,7 +234,7 @@ PromptDialog::PromptDialog(const bulwark::SecurityEvent& event, QWidget* parent,
     if (reasons.size() > kMaxReasons)
         evl->addWidget(ui::label(u("… 另有 %1 条,见「查看攻击时间线」")
                                      .arg(reasons.size() - kMaxReasons), "muted"));
-    if (reasons.isEmpty() && !yaraStrip)
+    if (reasons.isEmpty())
         evl->addWidget(ui::label(u("引擎评分 %1,未列出具体原因。").arg(e.riskScore), "muted"));
     if (!e.techniques.isEmpty()) {
         QList<QPair<QString, QColor>> tags;

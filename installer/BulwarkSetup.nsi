@@ -273,7 +273,7 @@ Section "主程序与驱动" SEC_MAIN
         ${EndIf}
     ${EndIf}
 
-    ; 旧版本还装过下列 Qt 文件,本版已不再打包(见 stage-payload.ps1)。只在覆盖本产品时清理,
+    ; 旧版本还装过下列文件,本版已不再打包(见 stage-payload.ps1)。只在覆盖本产品时清理,
     ; 且只删已知文件名、只移除空目录 —— $INSTDIR 可能被选在含其他内容的目录下。
     ${If} ${FileExists} "$INSTDIR\bulwark_service.exe"
         DetailPrint "清理旧版本遗留的多余文件 ..."
@@ -294,6 +294,13 @@ Section "主程序与驱动" SEC_MAIN
         RMDir "$INSTDIR\imageformats"
         RMDir "$INSTDIR\networkinformation"
         RMDir "$INSTDIR\styles"
+        ; YARA 功能已移除:清掉旧版本装过的辅助程序和内置规则包
+        nsExec::ExecToLog 'taskkill /F /IM bulwark_yarac.exe'
+        Pop $0
+        Delete "$INSTDIR\bulwark_yarac.exe"
+        Delete "$INSTDIR\rules\yara-forge-core.yarc"
+        Delete "$INSTDIR\rules\yara-forge-core.json"
+        RMDir "$INSTDIR\rules"
     ${EndIf}
 
     DetailPrint "安装程序文件到 $INSTDIR ..."

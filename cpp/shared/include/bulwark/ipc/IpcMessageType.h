@@ -116,10 +116,10 @@ enum class IpcMessageType {
     ReservedSlot92,
     ReservedSlot93,
 
-    YaraRulesStatusRequest,
-    YaraRulesStatusResponse,
-    YaraRulesActionRequest,
-    YaraRulesActionResponse,
+    ReservedSlot94,
+    ReservedSlot95,
+    ReservedSlot96,
+    ReservedSlot97,
 };
 
 static_assert(static_cast<int>(IpcMessageType::ReservedBehaviorSessionStart) == 23);
@@ -153,8 +153,10 @@ static_assert(static_cast<int>(IpcMessageType::ReservedSlot90) == 90);
 static_assert(static_cast<int>(IpcMessageType::ReservedSlot91) == 91);
 static_assert(static_cast<int>(IpcMessageType::ReservedSlot92) == 92);
 static_assert(static_cast<int>(IpcMessageType::ReservedSlot93) == 93);
-static_assert(static_cast<int>(IpcMessageType::YaraRulesStatusRequest) == 94);
-static_assert(static_cast<int>(IpcMessageType::YaraRulesActionResponse) == 97);
+static_assert(static_cast<int>(IpcMessageType::ReservedSlot94) == 94);
+static_assert(static_cast<int>(IpcMessageType::ReservedSlot95) == 95);
+static_assert(static_cast<int>(IpcMessageType::ReservedSlot96) == 96);
+static_assert(static_cast<int>(IpcMessageType::ReservedSlot97) == 97);
 static_assert(static_cast<int>(IpcMessageType::ReservedSlot26) == 26);
 static_assert(static_cast<int>(IpcMessageType::ReservedSlot27) == 27);
 

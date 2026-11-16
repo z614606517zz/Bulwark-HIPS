@@ -418,30 +418,6 @@ void IpcServer::handleLine(QLocalSocket* sock, const QString& line) {
                 break;
             }
 
-            case IpcMessageType::YaraRulesStatusRequest: {
-                YaraRulesStatusPayload payload;
-                if (yaraStatusRequested)
-                    payload = yaraStatusRequested();
-                else
-                    payload.message = QStringLiteral("服务未启用 YARA 规则库");
-                sendTo(sock, IpcMessage::from(IpcMessageType::YaraRulesStatusResponse, payload));
-                break;
-            }
-            case IpcMessageType::YaraRulesActionRequest: {
-                const auto req = YaraRulesActionRequestPayload::fromJson(msg->payloadObject());
-                YaraRulesActionResultPayload res;
-                if (yaraActionRequested) {
-                    res = yaraActionRequested(req);
-                } else {
-                    res.ok = false;
-                    res.message = QStringLiteral("服务未启用 YARA 规则库");
-                }
-                res.requestId = req.requestId;
-                res.action = req.action;
-                sendTo(sock, IpcMessage::from(IpcMessageType::YaraRulesActionResponse, res));
-                break;
-            }
-
             default:
                 break;
         }
@@ -630,10 +606,6 @@ void IpcServer::sendQuarantineList(QLocalSocket* only) {
     const QuarantineListResponsePayload payload =
         quarantineListRequested ? quarantineListRequested() : QuarantineListResponsePayload{};
     deliver(only, IpcMessage::from(IpcMessageType::QuarantineListResponse, payload));
-}
-
-void IpcServer::sendYaraStatus(const YaraRulesStatusPayload& p) {
-    broadcast(IpcMessage::from(IpcMessageType::YaraRulesStatusResponse, p));
 }
 
 }

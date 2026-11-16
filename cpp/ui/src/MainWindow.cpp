@@ -96,7 +96,6 @@ QString stickerIconFor(const QString& key)
         {QString::fromLatin1(nav::Quarantine), QStringLiteral("quar")},
         {QString::fromLatin1(nav::Persistence), QStringLiteral("auto")},
         {QString::fromLatin1(nav::Hardening), QStringLiteral("harden")},
-        {QString::fromLatin1(nav::YaraRules), QStringLiteral("yara")},
         {QString::fromLatin1(nav::Settings), QStringLiteral("settings")},
     };
     return map.value(key, QStringLiteral("dash"));
@@ -119,7 +118,6 @@ QString titanPageCode(const QString& key)
         {QString::fromLatin1(nav::Quarantine), QStringLiteral("STASIS")},
         {QString::fromLatin1(nav::Persistence), QStringLiteral("IGNITION")},
         {QString::fromLatin1(nav::Hardening), QStringLiteral("ARMOR UP")},
-        {QString::fromLatin1(nav::YaraRules), QStringLiteral("DATABANK")},
         {QString::fromLatin1(nav::Settings), QStringLiteral("CONFIG")},
     };
     return map.value(key);
@@ -143,14 +141,12 @@ QString titanIconFor(const QString& icon)
     return icon == QLatin1String("package") ? QStringLiteral("box") : icon;
 }
 
-// 页标题色块:仪表盘 / 进程管理 / 设置是能量蓝,规则库是琥珀,其余与 identity::page 一致。
+// 页标题色块:仪表盘 / 进程管理 / 设置是能量蓝,其余与 identity::page 一致。
 QColor titanPageHue(const QString& key)
 {
     if (key == QLatin1String(nav::Dashboard) || key == QLatin1String(nav::Processes)
         || key == QLatin1String(nav::Settings))
         return theme::pal().glow;
-    if (key == QLatin1String(nav::YaraRules))
-        return theme::pal().amber;
     return identity::page(key);
 }
 
@@ -215,8 +211,6 @@ MainWindow::MainWindow(QWidget* parent, bool quiet) : QWidget(parent), m_quiet(q
             pages::persistence(m_ipc));
     addPage(nav::Hardening, u("管控"), "shield", u("系统加固"), u("系统加固"), u("基线体检 · 一键加固 · 劫持防护"),
             pages::hardening(m_ipc));
-    addPage(nav::YaraRules, u("管控"), "layers", u("规则库"), u("YARA 规则库"),
-            u("自动下载 · 自动编译 · 来源与跳过明细"), pages::yaraRules(m_ipc));
     {
         auto* aiAct = new KeyCap(QStringLiteral("ai"), u("AI 活动"));
         aiAct->setLineIcon(QStringLiteral("cpu"));
@@ -318,7 +312,6 @@ MainWindow::MainWindow(QWidget* parent, bool quiet) : QWidget(parent), m_quiet(q
                     14000, u("查看 AI 活动"), QStringLiteral("ai-activity"));
             });
     connect(m_ipc, &IpcClient::remediationReport, this, &MainWindow::onRemediationReport);
-    connect(m_ipc, &IpcClient::yaraStatusReceived, this, &MainWindow::onYaraStatus);
     connect(m_ipc, &IpcClient::eventLogReceived, this, [this](const bulwark::ipc::EventLogPayload& p) {
         if (p.action == bulwark::VerdictAction::Block)
             bumpBadge(nav::Events);
@@ -1030,46 +1023,20 @@ void MainWindow::refreshProtectionPill()
         m_tray->setToolTip(u("磐垒主动防御 — ") + text);
 }
 
-// 未验证规则的 YARA 命中只是弱信号:不弹窗,常驻小垒冒个气泡,规则库键帽记未读。
-// 家族规则命中另有拦截通知(特征识别战报),这里不重复。
-void MainWindow::onYaraStatus(const bulwark::ipc::YaraRulesStatusPayload& status)
-{
-    QSet<QString> current;
-    int fresh = 0;
-    for (const bulwark::ipc::YaraScanHitPayload& h : status.scan.recentHits) {
-        const QString key = h.sha256 + QLatin1Char('|') + QString::number(h.timeUtc.toMSecsSinceEpoch());
-        current.insert(key);
-        if (m_yaraBaseline && !m_yaraSeen.contains(key) && h.level != QLatin1String("malicious"))
-            ++fresh;
-    }
-    m_yaraSeen = current;
-    m_yaraBaseline = true;
-    if (fresh == 0)
-        return;
-    for (int i = 0; i < fresh; ++i)
-        bumpBadge(nav::YaraRules);
-    if (m_resident && m_openPrompts.isEmpty())
-        m_resident->say(robot::Mood::Info, line("扫描到 %1 个可疑特征", "发现 %1 个可疑特征~").arg(fresh), 6000);
-}
-
 void MainWindow::setConnected(bool connected)
 {
     const bool was = m_svcConnected;
     m_svcConnected = connected;
     if (!connected)
         m_haveSettings = false;
-    m_yaraBaseline = false;
-    m_yaraSeen.clear();
     refreshProtectionPill();
     if (connected) {
         if (m_backendStarting) {
             m_backendStarting = false;
             m_brand->setServiceStarting(false);
         }
-        if (m_ipc) {
+        if (m_ipc)
             m_ipc->requestSettings();
-            m_ipc->requestYaraStatus();
-        }
         return;
     }
     // 服务在运行中掉线:给一条带「启动服务」动作的横幅。

@@ -38,7 +38,5 @@ add_subdirectory(ui)
 
 add_subdirectory(amsi)
 
-add_subdirectory(yarac)
-
 enable_testing()
 add_subdirectory(tests)

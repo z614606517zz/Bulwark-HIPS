@@ -77,8 +77,6 @@ private:
     void confirmUndoBlock(const QString& path);
     void showGuardedWriteDenied(const bulwark::SecurityEvent& e, qint64 nowMs);
     void trustGuardedWriter(const QString& actorPath);
-    void showYaraBlock(const bulwark::SecurityEvent& e, bulwark::EnforcementOutcome enforcement,
-                       bool execBlocked);
     void reflow();
     void scheduleReflow();
     void remove(ToastWindow* toast);

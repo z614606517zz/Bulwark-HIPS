@@ -17,7 +17,6 @@ inline constexpr const char* SoftwareCatalog = "softlib";
 inline constexpr const char* Quarantine  = "quarantine";
 inline constexpr const char* Persistence = "persistence";
 inline constexpr const char* Hardening   = "hardening";
-inline constexpr const char* YaraRules   = "yararules";
 inline constexpr const char* Settings    = "settings";
 }
 

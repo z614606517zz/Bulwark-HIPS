@@ -19,14 +19,6 @@ qt_add_executable(bulwark_service
     include/bulwark/service/reputation/HttpTransport.h
 
     src/reputation/ThreatFoxFeed.cpp
-    include/bulwark/service/YaraForgeRelease.h
-    src/YaraForgeRelease.cpp
-    include/bulwark/service/YaraHelperProcess.h
-    src/YaraHelperProcess.cpp
-    include/bulwark/service/YaraRuleUpdater.h
-    src/YaraRuleUpdater.cpp
-    include/bulwark/service/YaraScanner.h
-    src/YaraScanner.cpp
 
     src/monitoring/ProcessInspector.cpp
     src/monitoring/ProcessOriginResolver.cpp
@@ -114,14 +106,6 @@ if(WIN32)
 endif()
 
 target_compile_features(bulwark_service PRIVATE cxx_std_20)
-
-# 随包辅助程序链接的 YARA-X 版本:编译时用的引擎与之不同的规则文件,扫描进程载入不了,要重新下载编译。
-set(BULWARK_YARAX_VERSION "")
-if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/yara-x/VERSION")
-    file(STRINGS "${CMAKE_SOURCE_DIR}/third_party/yara-x/VERSION" BULWARK_YARAX_VERSION LIMIT_COUNT 1)
-    string(STRIP "${BULWARK_YARAX_VERSION}" BULWARK_YARAX_VERSION)
-endif()
-target_compile_definitions(bulwark_service PRIVATE BULWARK_YARAX_VERSION="${BULWARK_YARAX_VERSION}")
 
 # Isolated-VM self-test entry points only; release binaries must not contain them.
 if(BULWARK_ENABLE_SELFTEST)

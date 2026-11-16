@@ -136,26 +136,6 @@ void bindThreatFox(const QJsonObject& o, ThreatFoxFeedOptions& t) {
     bindInt(o, "QueryTimeoutSeconds", t.QueryTimeoutSeconds);
 }
 
-void bindYaraRules(const QJsonObject& o, YaraRulesOptions& y) {
-    bindBool(o, "Enabled", y.Enabled);
-    bindBool(o, "AutoUpdate", y.AutoUpdate);
-    bindStr(o, "Package", y.Package);
-    bindStr(o, "ReleaseApiUrl", y.ReleaseApiUrl);
-    bindStr(o, "DownloadUrlPrefix", y.DownloadUrlPrefix);
-    bindInt(o, "InitialDelaySeconds", y.InitialDelaySeconds);
-    bindInt(o, "CheckIntervalHours", y.CheckIntervalHours);
-    bindInt(o, "DownloadTimeoutSeconds", y.DownloadTimeoutSeconds);
-    bindInt(o, "MaxDownloadMB", y.MaxDownloadMB);
-    bindInt(o, "CompileTimeoutSeconds", y.CompileTimeoutSeconds);
-    bindInt(o, "CompilerMemoryLimitMB", y.CompilerMemoryLimitMB);
-    bindBool(o, "ScanProcesses", y.ScanProcesses);
-    bindInt(o, "ScanMaxFileMB", y.ScanMaxFileMB);
-    bindInt(o, "ScanTimeoutSeconds", y.ScanTimeoutSeconds);
-    bindInt(o, "ScannerMemoryLimitMB", y.ScannerMemoryLimitMB);
-    bindStrList(o, "MaliciousRules", y.MaliciousRules);
-    bindStrList(o, "IgnoredRules", y.IgnoredRules);
-}
-
 }
 
 bool BulwarkOptions::loadFromFile(const QString& appsettingsPath) {
@@ -230,7 +210,6 @@ bool BulwarkOptions::loadFromFile(const QString& appsettingsPath) {
         return v.isObject() ? v.toObject() : QJsonObject();
     };
     bindThreatFox(sub("ThreatFoxFeed"), ThreatFoxFeed);
-    bindYaraRules(sub("YaraRules"), YaraRules);
 
     bindAi(sub("Ai"), Ai);
     bindEtw(sub("Etw"), Etw);

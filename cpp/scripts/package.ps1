@@ -45,9 +45,6 @@ try {
   $buildDir = Join-Path $buildSrc 'build_pkg'
   if (Test-Path $buildDir) { Remove-Item -Recurse -Force $buildDir }
 
-  Write-Host '== 准备 YARA-X C 接口包 ==' -ForegroundColor Cyan
-  & (Join-Path $scriptDir 'fetch-yara-x.ps1')
-
   Write-Host '== 构建内核驱动 (Release) ==' -ForegroundColor Cyan
   & (Join-Path $repoDir 'scripts\build-driver.ps1') -Configuration Release
   if ($LASTEXITCODE -ne 0) { throw "驱动构建失败 ($LASTEXITCODE)" }
@@ -59,27 +56,15 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "配置失败 ($LASTEXITCODE)" }
 
   Write-Host '== 构建 (Release) ==' -ForegroundColor Cyan
-  & $CMake --build $buildDir --config Release --target bulwark_service bulwark_ui BulwarkAmsi bulwark_yarac
+  & $CMake --build $buildDir --config Release --target bulwark_service bulwark_ui BulwarkAmsi
   if ($LASTEXITCODE -ne 0) { throw "构建失败 ($LASTEXITCODE)" }
 
   $svcExe = Join-Path $buildDir 'service\Release\bulwark_service.exe'
   $uiExe  = Join-Path $buildDir 'ui\Release\bulwark_ui.exe'
   $amsiDll = Join-Path $buildDir 'amsi\Release\BulwarkAmsi.dll'
-  $yaracExe = Join-Path $buildDir 'yarac\Release\bulwark_yarac.exe'
-  foreach ($e in @($svcExe, $uiExe, $amsiDll, $yaracExe, $driverSys)) {
+  foreach ($e in @($svcExe, $uiExe, $amsiDll, $driverSys)) {
     if (-not (Test-Path $e)) { throw "未找到产物: $e" }
   }
-
-  # 内置规则:用刚构建的辅助程序把固定版本的 YARA Forge 规则包编译好,随包发布,
-  # 装好后没联网也有规则可扫;服务联网更新成功后改用新规则。
-  Write-Host '== 预编译内置 YARA 规则 ==' -ForegroundColor Cyan
-  $forgeZip = Join-Path $buildDir 'yara-forge-rules-core.zip'
-  & (Join-Path $scriptDir 'fetch-yara-forge.ps1') -OutFile $forgeZip
-  $rulesDir = Join-Path $buildDir 'rules'
-  New-Item -ItemType Directory -Force -Path $rulesDir | Out-Null
-  & $yaracExe --zip $forgeZip --out (Join-Path $rulesDir 'yara-forge-core.yarc') `
-    --report (Join-Path $rulesDir 'yara-forge-core.json')
-  if ($LASTEXITCODE -ne 0) { throw "内置 YARA 规则编译失败 ($LASTEXITCODE),见 $rulesDir\yara-forge-core.json" }
 
   Write-Host '== 组装 dist + windeployqt ==' -ForegroundColor Cyan
   if (Test-Path $distDir) { Remove-Item -Recurse -Force $distDir }
@@ -87,8 +72,6 @@ try {
   Copy-Item $svcExe $distDir
   Copy-Item $uiExe $distDir
   Copy-Item $amsiDll $distDir
-  Copy-Item $yaracExe $distDir
-  Copy-Item $rulesDir $distDir -Recurse
   Copy-Item $driverSys $distDir
   Copy-Item (Join-Path $cppDir 'ui\app.ico') $distDir -Force
   $prevEA = $ErrorActionPreference

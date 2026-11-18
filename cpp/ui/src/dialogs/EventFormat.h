@@ -36,6 +36,11 @@ inline QString typeLabel(bulwark::EventType t) {
     case E::SelfProtect:      return u("自我保护");
     case E::DnsQuery:         return u("DNS 解析");
     case E::ScriptScan:       return u("脚本内容送检");
+    case E::WmiSubscription:  return u("WMI 永久订阅");
+    case E::FileRead: return u("敏感文件读取");
+    case E::ThreadAccess: return u("线程访问");
+    case E::DiskProtectionChange: return u("磁盘保护变更");
+    case E::RemoteShareAccess: return u("远端共享访问");
     }
     return u("行为");
 }
@@ -63,6 +68,11 @@ inline QString typeGlyph(bulwark::EventType t) {
     case E::DnsQuery:         return QStringLiteral("globe");
     case E::SelfProtect:      return QStringLiteral("shield");
     case E::ScriptScan:       return QStringLiteral("terminal");
+    case E::WmiSubscription:  return QStringLiteral("terminal");
+    case E::FileRead: return QStringLiteral("file");
+    case E::ThreadAccess: return QStringLiteral("terminal");
+    case E::DiskProtectionChange: return QStringLiteral("shield");
+    case E::RemoteShareAccess: return QStringLiteral("network");
     }
     return QStringLiteral("activity");
 }
@@ -77,7 +87,12 @@ inline identity::Kind typeKind(bulwark::EventType t) {
     case E::ImageLoad:        return K::Module;
     case E::FileWrite:
     case E::FileDelete:       return K::File;
-    case E::RegistryWrite:    return K::Registry;
+    case E::RegistryWrite:
+    case E::WmiSubscription:  return K::Registry;
+    case E::FileRead: return K::File;
+    case E::ThreadAccess: return K::Injection;
+    case E::DiskProtectionChange: return K::File;
+    case E::RemoteShareAccess: return K::Network;
     case E::NetworkConnect:
     case E::DnsQuery:         return K::Network;
     case E::SelfProtect:      break; // neutral, like processes: records never wear the brand jade
@@ -102,6 +117,11 @@ inline QString verb(bulwark::EventType t) {
     case E::SelfProtect:      return u("触发自我保护");
     case E::DnsQuery:         return u("发起 DNS 解析");
     case E::ScriptScan:       return u("尝试执行脚本内容");
+    case E::WmiSubscription:  return u("注册 WMI 永久事件订阅");
+    case E::FileRead: return u("读取敏感文件");
+    case E::ThreadAccess: return u("请求修改线程上下文权限");
+    case E::DiskProtectionChange: return u("修改磁盘加密或密钥保护器");
+    case E::RemoteShareAccess: return u("请求访问网络共享");
     }
     return u("敏感行为");
 }
@@ -120,6 +140,11 @@ inline QString action(bulwark::EventType t) {
     case E::SelfProtect:      return u("触发自我保护");
     case E::DnsQuery:         return u("解析域名");
     case E::ScriptScan:       return u("执行脚本内容");
+    case E::WmiSubscription:  return u("注册 WMI 永久事件订阅");
+    case E::FileRead: return u("读取敏感文件");
+    case E::ThreadAccess: return u("请求修改线程上下文权限");
+    case E::DiskProtectionChange: return u("修改磁盘加密或密钥保护器");
+    case E::RemoteShareAccess: return u("请求访问网络共享");
     }
     return u("敏感行为");
 }

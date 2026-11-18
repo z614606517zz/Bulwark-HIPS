@@ -184,6 +184,12 @@ void credentialPolicies(Segment& s) {
 void addCredentialAccessRules(QVector<DefenseRule>& out) {
     Segment s(out, "凭据访问");
     s.noDevToolAutoAllow();
+    for (const char* target : { "*\\.ssh\\id_rsa", "*\\.ssh\\id_dsa", "*\\.ssh\\id_ecdsa", "*\\.ssh\\id_ed25519", "*\\.ssh\\identity", "*\\GitHub CLI\\hosts.yml",
+        "*\\.aws\\credentials", "*\\.azure\\accessTokens.json", "*\\.azure\\msal_token_cache.json", "*\\.azure\\msal_token_cache.bin",
+        "*\\gcloud\\application_default_credentials.json", "*\\gcloud\\credentials.db", "*\\.kube\\config", "*\\.docker\\config.json",
+        "*\\.npmrc", "*\\.pypirc", "*\\.git-credentials", "*\\gh\\hosts.yml" })
+        s.add(EventType::FileRead, Ask, u("读取开发者或云凭据（仅路径元数据，观测后确认，T1552）"))
+            .target(target).exemptOs().disableSignedAutoAllow().disableDevToolAutoAllow();
     lsassDumping(s);
     credentialStores(s);
     credentialTools(s);

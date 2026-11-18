@@ -91,6 +91,11 @@ qt_add_executable(bulwark_service
     src/InstallerDetect.cpp
     include/bulwark/service/FileContentProbe.h
     src/FileContentProbe.cpp
+    src/NativeAuditPolicy.cpp
+    src/NativeAuditEventSource.cpp
+    src/WmiRepositorySource.cpp
+    include/bulwark/service/NativeAuditEventSource.h
+    include/bulwark/service/WmiRepositorySource.h
     src/Worker.cpp
 )
 
@@ -105,7 +110,7 @@ target_include_directories(bulwark_service
 target_link_libraries(bulwark_service PRIVATE bulwark_shared Qt6::Core Qt6::Network)
 
 if(WIN32)
-    target_link_libraries(bulwark_service PRIVATE advapi32 kernel32 wintrust crypt32 bcrypt tdh fltlib ole32 uuid fwpuclnt ws2_32 rstrtmgr psapi iphlpapi)
+    target_link_libraries(bulwark_service PRIVATE wevtapi wbemuuid oleaut32 advapi32 kernel32 wintrust crypt32 bcrypt tdh fltlib ole32 uuid fwpuclnt ws2_32 rstrtmgr psapi iphlpapi)
 endif()
 
 target_compile_features(bulwark_service PRIVATE cxx_std_20)

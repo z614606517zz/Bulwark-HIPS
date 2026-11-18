@@ -17,6 +17,7 @@ public:
         bool      revoked = false;
     };
 
+    static QString tryGetUserSid(int pid);
     static bool    isSigned(const QString& path);
     static QString tryGetPublisher(const QString& path);
     static QString tryGetSignerThumbprint(const QString& path);

@@ -1,5 +1,6 @@
 #include "bulwark/service/FilelessGuard.h"
 #include "bulwark/service/FilelessPolicy.h"
+#include "bulwark/service/monitoring/ProcessInspector.h"
 
 #include <QDateTime>
 #include <QFileInfo>
@@ -332,6 +333,48 @@ QVector<FilelessGuard::Finding> FilelessGuard::scanHookPatches(void* process) co
     return out;
 }
 
+QVector<FilelessGuard::Finding> FilelessGuard::scanThreadExecution(void* process, int pid) const {
+    QVector<Finding> out;
+    const HANDLE proc = static_cast<HANDLE>(process);
+    BOOL critical = TRUE, wow = FALSE;
+    if (!::IsProcessCritical(proc, &critical) || critical || !::IsWow64Process(proc, &wow)) return out;
+    const HANDLE snapshot = ::CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return out;
+    THREADENTRY32 entry{}; entry.dwSize = sizeof(entry);
+    int sampled = 0;
+    if (::Thread32First(snapshot, &entry)) do {
+        if (entry.th32OwnerProcessID != static_cast<DWORD>(pid)) continue;
+        if (++sampled > 8) break;
+        const HANDLE thread = ::OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_LIMITED_INFORMATION,
+                                          FALSE, entry.th32ThreadID);
+        if (!thread) continue;
+        quintptr pc = 0;
+        if (::GetProcessIdOfThread(thread) == static_cast<DWORD>(pid) && ::SuspendThread(thread) != DWORD(-1)) {
+            // No allocations or process-memory reads while the thread is suspended.
+            if (wow) {
+                WOW64_CONTEXT context{}; context.ContextFlags = WOW64_CONTEXT_CONTROL;
+                if (::Wow64GetThreadContext(thread, &context)) pc = context.Eip;
+            } else {
+                CONTEXT context{}; context.ContextFlags = CONTEXT_CONTROL;
+                if (::GetThreadContext(thread, &context)) pc = context.Rip;
+            }
+            ::ResumeThread(thread);
+        }
+        ::CloseHandle(thread);
+        MEMORY_BASIC_INFORMATION mbi{};
+        if (pc && ::VirtualQueryEx(proc, reinterpret_cast<LPCVOID>(pc), &mbi, sizeof(mbi))
+            && mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && hasExecute(mbi.Protect)) {
+            out.push_back({ QStringLiteral("线程当前执行位置落在私有可执行内存"),
+                QStringLiteral("TID %1 的当前指令地址为 0x%2，位于无映像后备的可执行私有页；可能涉及 APC / 线程上下文劫持，不能单凭此项确定注入者")
+                    .arg(entry.th32ThreadID).arg(pc, 0, 16),
+                50, false, QStringLiteral("T1055.003") });
+            break;
+        }
+    } while (::Thread32Next(snapshot, &entry));
+    ::CloseHandle(snapshot);
+    return out;
+}
+
 int FilelessGuard::scanProcess(int pid) {
     return scanProcessImpl(pid, false);
 }
@@ -371,6 +414,7 @@ int FilelessGuard::scanProcessImpl(int pid, bool urgent) {
 
     QVector<Finding> findings = scanHookPatches(proc);
     findings += scanUnbackedMemory(proc, jitHost);
+    if (!jitHost && (urgent || !findings.isEmpty())) findings += scanThreadExecution(proc, pid);
     ::CloseHandle(proc);
 
     for (const Finding& f : findings)
@@ -380,7 +424,9 @@ int FilelessGuard::scanProcessImpl(int pid, bool urgent) {
 }
 
 void FilelessGuard::emitFinding(int pid, const QString& imagePath, const Finding& f) {
-    const QString key = QStringLiteral("%1|%2|%3").arg(pid).arg(imagePath.toLower(), f.what);
+    const auto instance = monitoring::ProcessInspector::tryGetProcessInstance(pid);
+    const QString key = QStringLiteral("%1|%2|%3|%4").arg(pid)
+        .arg(instance ? instance->creationFileTime : 0).arg(imagePath.toLower(), f.what);
     if (reported_.contains(key))
         return;
     if (reported_.size() > 2048)
@@ -394,6 +440,7 @@ void FilelessGuard::emitFinding(int pid, const QString& imagePath, const Finding
     e.type = bulwark::EventType::RemoteThread;
     e.actorPid = pid;
     e.actorPath = imagePath;
+    if (instance) e.actorCreationFileTime = instance->creationFileTime;
     e.target = QStringLiteral("PID %1 %2 · %3")
                    .arg(pid).arg(QFileInfo(imagePath).fileName(), f.what);
     e.detail = f.detail;
@@ -416,10 +463,26 @@ void FilelessGuard::emitFinding(int pid, const QString& imagePath, const Finding
                       .arg(QFileInfo(imagePath).fileName()).arg(pid),
                   0, false, bulwark::EvidenceSubject::Target);
 
+    const auto request = contextRequests_.constFind(pid);
+    if (request != contextRequests_.constEnd() && instance && request->parentCreationFileTime
+        && request->parentCreationFileTime == instance->creationFileTime && e.timestampUtc >= request->timestampUtc
+        && request->timestampUtc.msecsTo(e.timestampUtc) <= 60 * 1000) {
+        e.addEvidence(QStringLiteral("ThreadAccess"), bulwark::EvidenceKind::Info,
+            QStringLiteral("此前观测到 PID %1 请求操作本进程线程上下文；这是相关线索，尚不能证明其写入了此段内存")
+                .arg(request->actorPid), 0, false, bulwark::EvidenceSubject::Target);
+    }
     emit eventProduced(e);
 }
 
 void FilelessGuard::onObservedEvent(const bulwark::SecurityEvent& e) {
+    if (e.type == bulwark::EventType::ThreadAccess && e.parentPid > 4) {
+        if (contextRequests_.size() >= 1024) contextRequests_.clear();
+        if (const auto target = monitoring::ProcessInspector::tryGetProcessInstance(e.parentPid)) {
+            auto request = e;
+            request.parentCreationFileTime = target->creationFileTime;
+            contextRequests_.insert(e.parentPid, request);
+        }
+    }
     if (e.memoryInjection && e.userModeObserved &&
         e.type == bulwark::EventType::RemoteThread &&
         e.target.startsWith(QLatin1String("PID "), Qt::CaseInsensitive))

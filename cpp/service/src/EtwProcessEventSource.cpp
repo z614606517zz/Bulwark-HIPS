@@ -3,6 +3,9 @@
 #include "bulwark/engine/DgaDomainAnalyzer.h"
 #include "bulwark/service/monitoring/ProcessInspector.h"
 #include "bulwark/service/VolumePathMap.h"
+#include "bulwark/service/TelemetryPolicy.h"
+#include "bulwark/engine/NetworkEndpoint.h"
+#include "bulwark/engine/SensitivePaths.h"
 
 #include <QTimer>
 #include <QMutex>
@@ -17,6 +20,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <climits>
 #include <thread>
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -44,9 +48,12 @@ constexpr int       kProcBirthSoftMax    = 512;
 
 const wchar_t* const kKernelNetworkGuid  = L"{7DD42A49-5329-4832-8DFD-43D979153A88}";
 constexpr USHORT     kNetConnectEventId  = 12;
+constexpr USHORT     kNetConnectV6EventId = 28;
 
 const wchar_t* const kDnsClientGuid      = L"{1C95126E-7EEA-49A9-A3FE-A378B03DDB4D}";
 constexpr USHORT     kDnsQueryEventId    = 3006;
+const wchar_t* const kWmiActivityGuid    = L"{1418EF04-B0B4-4623-BF7E-D74AB47BBDAA}";
+constexpr USHORT     kWmiSubscriptionId = 5861;
 
 // 只要 TerminateProcess(事件 2)。同一提供程序的 OpenProcess / OpenThread 量极大,
 // 用启用时的事件 ID 过滤挡在内核侧。事件头 PID 是调用方,载荷里是被结束的进程。
@@ -69,6 +76,8 @@ constexpr USHORT     kFileDeletePath     = 26;
 constexpr USHORT     kFileCreateNew      = 30;
 constexpr USHORT     kFileCreate         = 12;
 constexpr USHORT     kFileWrite          = 16;
+constexpr USHORT     kFileRead           = 15;
+constexpr ULONGLONG  kKeywordFileRead    = 0x100;
 constexpr ULONGLONG  kKeywordFileCreate  = 0x80;
 constexpr ULONGLONG  kKeywordFileWrite   = 0x200;
 constexpr int        kFileObjMapMax      = 4096;
@@ -211,6 +220,7 @@ struct EtwProcessEventSource::Impl {
     std::unique_ptr<krabs::provider<>> provider;
     std::unique_ptr<krabs::provider<>> netProvider;
     std::unique_ptr<krabs::provider<>> dnsProvider;
+    std::unique_ptr<krabs::provider<>> wmiProvider;
     std::unique_ptr<krabs::provider<>> regProvider;
     std::unique_ptr<krabs::provider<>> fileProvider;
     std::unique_ptr<krabs::provider<>> auditProvider;
@@ -224,30 +234,11 @@ struct EtwProcessEventSource::Impl {
     EtwOptions etw;
     quint32    selfPid = 0;
 
-    QHash<quint32, bool> netTrustCache;
-    QMutex               netTrustMx;
-
-    bool actorIsTrustedSigned(quint32 pid) {
-        {
-            QMutexLocker lk(&netTrustMx);
-            const auto it = netTrustCache.constFind(pid);
-            if (it != netTrustCache.constEnd())
-                return it.value();
-        }
-        const QString path = monitoring::ProcessInspector::tryGetProcessImagePath(static_cast<int>(pid));
-        const bool trusted = !path.isEmpty() && monitoring::ProcessInspector::isSigned(path);
-        {
-            QMutexLocker lk(&netTrustMx);
-            if (netTrustCache.size() > 4096)
-                netTrustCache.clear();
-            netTrustCache.insert(pid, trusted);
-        }
-        return trusted;
-    }
     EmitGate   netGate;
     EmitGate   dnsGate;
     EmitGate   regGate;
     EmitGate   fileGate;
+    EmitGate   readGate;
     EmitGate   imageGate;
     EmitGate   threadGate;
     EmitGate   killGate;
@@ -385,8 +376,6 @@ struct EtwProcessEventSource::Impl {
         if (pid > 0) {
             notePidBirth(pid, static_cast<qint64>(::GetTickCount64()));
             pidPathCache.remove(pid);
-            QMutexLocker trustLock(&netTrustMx);
-            netTrustCache.remove(pid);
         }
         bulwark::SecurityEvent e;
         e.type      = bulwark::EventType::ProcessCreate;
@@ -424,7 +413,9 @@ struct EtwProcessEventSource::Impl {
         if (!parser.try_parse(L"ImageName", image) || image.empty())
             return;
         const QString path = deviceToDrive(QString::fromWCharArray(image.c_str()));
-        if (!isSuspectModulePath(path))
+        if (!isSuspectModulePath(path)
+            && !telemetry_policy::needsCompleteModuleTelemetry(
+                monitoring::ProcessInspector::tryGetProcessImagePath(static_cast<int>(host))))
             return;
         if (!imageGate.allow(host, path, static_cast<qint64>(::GetTickCount64())))
             return;
@@ -568,6 +559,8 @@ EtwProcessEventSource::EtwProcessEventSource(const EtwOptions& etw, QObject* par
     d_->regGate.dedupWindowMs = dedupMs;
     d_->fileGate.perMinCap     = etw.PerProcessFilePerMinute;
     d_->fileGate.dedupWindowMs = dedupMs;
+    d_->readGate.perMinCap = etw.PerProcessFilePerMinute;
+    d_->readGate.dedupWindowMs = dedupMs;
     d_->imageGate.perMinCap     = etw.PerProcessImagePerMinute;
     d_->imageGate.dedupWindowMs = dedupMs;
     d_->threadGate.perMinCap     = etw.PerProcessThreadPerMinute;
@@ -650,24 +643,30 @@ void EtwProcessEventSource::start() {
             impl->netProvider->add_on_event_callback(
                 [impl](const EVENT_RECORD& record, const krabs::trace_context& ctx) {
                     try {
-                        if (record.EventHeader.EventDescriptor.Id != kNetConnectEventId)
+                        if (record.EventHeader.EventDescriptor.Id != kNetConnectEventId
+                            && record.EventHeader.EventDescriptor.Id != kNetConnectV6EventId)
                             return;
                         krabs::schema schema(record, ctx.schema_locator);
                         krabs::parser parser(schema);
-                        uint32_t pid = 0, daddr = 0;
+                        uint32_t pid = 0;
+                        krabs::ip_address daddr;
                         uint16_t dport = 0;
                         parser.try_parse(L"PID", pid);
-                        if (!parser.try_parse(L"daddr", daddr) || daddr == 0)
+                        if (!parser.try_parse(L"daddr", daddr))
                             return;
                         parser.try_parse(L"dport", dport);
                         if (pid == 0 || pid == impl->selfPid)
                             return;
-                        const QString target = ipv4ToString(daddr) + QLatin1Char(':')
-                            + QString::number(netToHostPort(dport));
+                        bulwark::engine::NetworkEndpoint endpoint;
+                        endpoint.address = daddr.is_ipv6 ? QHostAddress(daddr.v6)
+                            : QHostAddress(ipv4ToString(daddr.v4));
+                        endpoint.port = netToHostPort(dport);
+                        if (endpoint.address.isNull()) return;
+                        const QString target = endpoint.text();
                         if (!impl->netGate.allow(pid, target, static_cast<qint64>(::GetTickCount64())))
                             return;
-                        if (impl->etw.NetworkUntrustedOnly && impl->actorIsTrustedSigned(pid))
-                            return;
+                        // Signature-based suppression belongs to individual
+                        // analyzers; explicit endpoint rules must see every actor.
                         bulwark::SecurityEvent e;
                         e.type     = bulwark::EventType::NetworkConnect;
                         e.actorPid = static_cast<int>(pid);
@@ -698,9 +697,8 @@ void EtwProcessEventSource::start() {
                         while (domain.endsWith(QLatin1Char('.'))) domain.chop(1);
                         if (domain.isEmpty())
                             return;
-                        if (impl->etw.SuspiciousOnly
-                            && bulwark::engine::DgaDomainAnalyzer::analyze(domain).score <= 0)
-                            return;
+                        // Readable domains can match explicit IOC/tunnel rules.
+                        // DGA scoring is a later analysis step, not an intake gate.
                         if (!impl->dnsGate.allow(pid, domain, static_cast<qint64>(::GetTickCount64())))
                             return;
                         bulwark::SecurityEvent e;
@@ -789,39 +787,54 @@ void EtwProcessEventSource::start() {
             ULONGLONG kfMask = kKeywordFile;
             if (impl->attribEnabled)
                 kfMask |= kKeywordFileCreate | kKeywordFileWrite;
+            if (impl->etw.DeveloperCredentialReads)
+                kfMask |= kKeywordFileCreate | kKeywordFileRead;
+            // File-object cleanup must invalidate names before an address can be reused.
+            kfMask |= 0x20;
             impl->fileProvider->any(kfMask);
             impl->fileProvider->add_on_event_callback(
                 [impl](const EVENT_RECORD& record, const krabs::trace_context& ctx) {
                     try {
                         const USHORT id = record.EventHeader.EventDescriptor.Id;
-                        if (impl->attribEnabled && (id == kFileCreate || id == kFileWrite
-                                                    || id == kFileCreateNew)) {
+                        if (id == 13 || id == 14) {
+                            krabs::schema schema(record, ctx.schema_locator);
+                            krabs::parser parser(schema);
+                            uint64_t object = 0;
+                            if (parser.try_parse(L"FileObject", object)) impl->fileObjPath_.remove(object);
+                            return;
+                        }
+                        if ((impl->attribEnabled || impl->etw.DeveloperCredentialReads) && (id == kFileCreate || id == kFileWrite
+                                                    || id == kFileCreateNew || id == kFileRead)) {
                             krabs::schema sch(record, ctx.schema_locator);
                             krabs::parser par(sch);
                             uint64_t fobj = 0;
                             if (par.try_parse(L"FileObject", fobj) && fobj != 0) {
-                                if (id == kFileWrite) {
+                                if (id == kFileWrite || id == kFileRead) {
                                     const auto it = impl->fileObjPath_.constFind(fobj);
                                     if (it != impl->fileObjPath_.constEnd()) {
+                                        if (id == kFileRead && (!impl->etw.DeveloperCredentialReads
+                                            || !bulwark::engine::isDeveloperCredential(it.value()))) return;
                                         const uint32_t wpid = record.EventHeader.ProcessId;
                                         // 写入者必须是真实用户态进程:缓存管理器由 System(pid 4)惰性写回时,
                                         // header pid 是 4。这种事件既不可处置,还会误标「已归因」而压掉
                                         // UserModeBehaviorSource 的兜底合成告警,所以 pid<=4 既不归因也不产出事件。
                                         const bool realWriter = wpid > 4 && wpid != impl->selfPid;
-                                        if (realWriter)
+                                        if (realWriter && id == kFileWrite)
                                             impl->noteAttributionHit(it.value().toLower());
                                         if (realWriter
-                                            && impl->fileGate.allow(
+                                            && (id == kFileRead ? impl->readGate : impl->fileGate).allow(
                                                    wpid, it.value(),
                                                    static_cast<qint64>(::GetTickCount64()))) {
                                             bulwark::SecurityEvent e;
-                                            e.type     = bulwark::EventType::FileWrite;
+                                            e.type     = id == kFileRead ? bulwark::EventType::FileRead : bulwark::EventType::FileWrite;
                                             e.actorPid = static_cast<int>(wpid);
                                             e.target   = it.value();
                                             e.correlationId = impl->attributionCorrelationId(
                                                 it.value().toLower());
                                             e.userModeObserved = true;
-                                            e.detail = QStringLiteral("用户态观测 · 改写受监视文件 %1")
+                                            e.detail = (id == kFileRead
+                                                ? QStringLiteral("用户态观测 · 读取开发凭据文件 %1（不采集正文）")
+                                                : QStringLiteral("用户态观测 · 改写受监视文件 %1"))
                                                            .arg(QFileInfo(it.value()).fileName());
                                             impl->enqueue(std::move(e));
                                         }
@@ -833,7 +846,8 @@ void EtwProcessEventSource::start() {
                                 if (par.try_parse(L"FileName", cname) && !cname.empty()) {
                                     const QString cpath =
                                         deviceToDrive(QString::fromWCharArray(cname.c_str()));
-                                    if (impl->isAttributionPath(cpath.toLower())) {
+                                    if (impl->isAttributionPath(cpath.toLower())
+                                        || (impl->etw.DeveloperCredentialReads && bulwark::engine::isDeveloperCredential(cpath))) {
                                         if (impl->fileObjPath_.size() >= kFileObjMapMax)
                                             impl->fileObjPath_.clear();
                                         impl->fileObjPath_.insert(fobj, cpath);
@@ -909,6 +923,45 @@ void EtwProcessEventSource::start() {
             auditOn = true;
         }
 
+        if (impl->etw.Enabled && impl->etw.WmiActivity) {
+            impl->wmiProvider = std::make_unique<krabs::provider<>>(krabs::guid(kWmiActivityGuid));
+            impl->wmiProvider->add_on_event_callback(
+                [impl](const EVENT_RECORD& record, const krabs::trace_context& ctx) {
+                    if (record.EventHeader.EventDescriptor.Id != kWmiSubscriptionId)
+                        return;
+                    try {
+                        krabs::schema schema(record, ctx.schema_locator);
+                        krabs::parser parser(schema);
+                        uint32_t clientPid = 0;
+                        parser.try_parse(L"ClientProcessId", clientPid);
+                        bulwark::SecurityEvent e;
+                        e.type = bulwark::EventType::WmiSubscription;
+                        // The ETW header belongs to the WMI provider. Never treat
+                        // its PID as the client when the actual caller is absent.
+                        e.actorPid = clientPid > 4 && clientPid <= INT_MAX
+                            ? static_cast<int>(clientPid) : 0;
+                        e.userModeObserved = true;
+                        e.originKind = bulwark::ProcessOriginKind::WmiProvider;
+                        e.target = QStringLiteral("WMI permanent event subscription");
+                        for (const wchar_t* field : { L"NamespaceName", L"Consumer", L"ESS" }) {
+                            std::wstring value;
+                            if (parser.try_parse(field, value) && !value.empty())
+                                e.target += QStringLiteral(" | ")
+                                    + QString::fromWCharArray(value.c_str()).left(512);
+                        }
+                        e.detail = QStringLiteral("WMI-Activity 5861：观测到永久订阅注册；属于事后变更告警，"
+                                                  "不表示已阻止创建。调用方未知时仅告警。");
+                        e.addEvidence(QStringLiteral("WmiActivity"), bulwark::EvidenceKind::Info,
+                                      e.detail, 0, false);
+                        impl->enqueue(std::move(e));
+                    } catch (const std::exception& ex) {
+                        impl->log.warning(QStringLiteral("WMI 订阅事件解析失败：%1")
+                            .arg(QString::fromUtf8(ex.what())));
+                    }
+                });
+            impl->trace->enable(*impl->wmiProvider);
+        }
+
         impl->trace->open();
     } catch (const std::exception& ex) {
         available_ = false;
@@ -916,6 +969,7 @@ void EtwProcessEventSource::start() {
         impl->provider.reset();
         impl->netProvider.reset();
         impl->dnsProvider.reset();
+        impl->wmiProvider.reset();
         impl->regProvider.reset();
         impl->fileProvider.reset();
         impl->auditProvider.reset();
@@ -942,6 +996,7 @@ void EtwProcessEventSource::start() {
     if (threadOn) active << QStringLiteral("ThreadStart(跨进程注入)");
     if (netOn) active << QStringLiteral("Kernel-Network");
     if (dnsOn) active << QStringLiteral("DNS-Client");
+    if (impl->wmiProvider) active << QStringLiteral("WMI-Activity(永久订阅变更)");
     if (regOn) active << QStringLiteral("Kernel-Registry");
     if (fileOn) active << QStringLiteral("Kernel-File");
     if (fileOn && impl->attribEnabled)
@@ -963,6 +1018,7 @@ void EtwProcessEventSource::stop() {
     d_->provider.reset();
     d_->netProvider.reset();
     d_->dnsProvider.reset();
+    d_->wmiProvider.reset();
     d_->regProvider.reset();
     d_->fileProvider.reset();
     d_->auditProvider.reset();
@@ -987,6 +1043,7 @@ void EtwProcessEventSource::drain() {
         d_->provider.reset();
         d_->netProvider.reset();
         d_->dnsProvider.reset();
+        d_->wmiProvider.reset();
         d_->regProvider.reset();
         d_->fileProvider.reset();
         d_->auditProvider.reset();

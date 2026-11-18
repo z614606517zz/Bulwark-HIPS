@@ -1,4 +1,5 @@
 #include "Driver.h"
+#include <ntstrsafe.h>
 
 // fwpsk.h 依赖 NDIS6 类型,必须在包含它之前定义。
 #ifndef NDIS_SUPPORT_NDIS6
@@ -43,6 +44,7 @@ BlwAddBlockIp(_In_ ULONG IpV4, _In_ USHORT Port)
     InterlockedOr64(&g_Blw.BlockIpMask, (LONG64)BLW_IP_BIT(IpV4));
     for (i = 0; i < BLW_MAX_PROTECTED; i++) {
         if (!g_Blw.BlockList[i].InUse) {
+            g_Blw.BlockList[i].IsV6 = FALSE;
             g_Blw.BlockList[i].IpV4 = IpV4;
             g_Blw.BlockList[i].Port = Port;
             g_Blw.BlockList[i].InUse = TRUE;
@@ -51,6 +53,38 @@ BlwAddBlockIp(_In_ ULONG IpV4, _In_ USHORT Port)
         }
     }
     KeReleaseSpinLock(&g_Blw.NetLock, oldIrql);
+}
+
+BOOLEAN
+BlwAddBlockIp6(_In_reads_(32) PCWSTR Hex, _In_ USHORT Port)
+{
+    UCHAR address[16]; ULONG i; KIRQL irql; BOOLEAN added = FALSE;
+    if (!BlwParseIpv6Hex(Hex, 32, address)) return FALSE;
+    KeAcquireSpinLock(&g_Blw.NetLock, &irql);
+    for (i = 0; i < BLW_MAX_PROTECTED; ++i) {
+        if (!g_Blw.BlockList[i].InUse) {
+            RtlCopyMemory(g_Blw.BlockList[i].IpV6, address, 16);
+            g_Blw.BlockList[i].IsV6 = TRUE;
+            g_Blw.BlockList[i].Port = Port;
+            g_Blw.BlockList[i].InUse = TRUE;
+            InterlockedIncrement(&g_Blw.BlockIpCount); added = TRUE; break;
+        }
+    }
+    KeReleaseSpinLock(&g_Blw.NetLock, irql);
+    return added;
+}
+static BOOLEAN
+BlwIp6IsBlocked(_In_reads_(16) const UCHAR* Address, _In_ USHORT Port)
+{
+    ULONG i; KIRQL irql; BOOLEAN blocked = FALSE;
+    if (!g_Blw.BlockIpCount) return FALSE;
+    KeAcquireSpinLock(&g_Blw.NetLock, &irql);
+    for (i = 0; i < BLW_MAX_PROTECTED; ++i) {
+        const BLW_BLOCK_IP* item = &g_Blw.BlockList[i];
+        if (item->InUse && item->IsV6 && (item->Port == 0 || item->Port == Port)
+            && RtlEqualMemory(item->IpV6, Address, 16)) { blocked = TRUE; break; }
+    }
+    KeReleaseSpinLock(&g_Blw.NetLock, irql); return blocked;
 }
 
 // 每条外发连接的 classify 都会调用(可能在 DISPATCH_LEVEL)。先做无锁位测试,位命中才取锁精确判定。
@@ -74,7 +108,7 @@ BlwIpIsBlocked(_In_ ULONG IpV4, _In_ USHORT Port)
             continue;
         }
         seen++;
-        if (g_Blw.BlockList[i].IpV4 == IpV4 &&
+        if (!g_Blw.BlockList[i].IsV6 && g_Blw.BlockList[i].IpV4 == IpV4 &&
             (g_Blw.BlockList[i].Port == 0 || g_Blw.BlockList[i].Port == Port)) {
             blocked = TRUE;
             break;
@@ -136,6 +170,30 @@ BlwClassifyFn(
         }
     }
 
+    if (inFixedValues->layerId == FWPS_LAYER_ALE_AUTH_CONNECT_V6) {
+        const FWP_BYTE_ARRAY16* address = inFixedValues->incomingValue[
+            FWPS_FIELD_ALE_AUTH_CONNECT_V6_IP_REMOTE_ADDRESS].value.byteArray16;
+        remotePort = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V6_IP_REMOTE_PORT].value.uint16;
+        if (address && BlwIp6IsBlocked(address->byteArray16, remotePort)) {
+            classifyOut->actionType = FWP_ACTION_BLOCK;
+            classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;
+            InterlockedIncrement64(&g_Blw.WfpIpBlocks);
+            if (g_Blw.Active && KeGetCurrentIrql() == PASSIVE_LEVEL) {
+                WCHAR text[80]; UNICODE_STRING target;
+                const UCHAR* b = address->byteArray16;
+                if (inMetaValues && FWPS_IS_METADATA_FIELD_PRESENT(inMetaValues, FWPS_METADATA_FIELD_PROCESS_ID))
+                    actorPid = (ULONG)inMetaValues->processId;
+                if (NT_SUCCESS(RtlStringCchPrintfW(text, RTL_NUMBER_OF(text),
+                    L"[%x:%x:%x:%x:%x:%x:%x:%x]:%u",
+                    (b[0]<<8)|b[1], (b[2]<<8)|b[3], (b[4]<<8)|b[5], (b[6]<<8)|b[7],
+                    (b[8]<<8)|b[9], (b[10]<<8)|b[11], (b[12]<<8)|b[13], (b[14]<<8)|b[15], remotePort))) {
+                    RtlInitUnicodeString(&target, text);
+                    BlwReportEvent(BlwEventNetworkConnect6, actorPid, 0, &target, NULL, 0, remotePort);
+                }
+            }
+        }
+        return;
+    }
     if (inFixedValues->layerId != FWPS_LAYER_ALE_AUTH_CONNECT_V4) {
         return;
     }

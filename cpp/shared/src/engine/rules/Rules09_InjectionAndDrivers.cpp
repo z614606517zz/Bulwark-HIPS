@@ -114,7 +114,8 @@ void imClientHooks(Segment& s) {
 }
 
 void vulnerableDrivers(Segment& s) {
-    // 仍被正常软件使用的易受攻击驱动:询问;装在 Program Files 下、签名健康的视为正常软件自带。
+    // Legitimate products may still ship these drivers, so ask rather than
+    // treating installation location or a valid signature as a vulnerability fix.
     const char* inUse[] = {
         "rtcore64.sys", "rtcore32.sys", "gdrv.sys", "gdrv2.sys", "gdrv3.sys", "asrdrv10.sys", "asrdrv101.sys",
         "asrdrv102.sys", "asrdrv103.sys", "asrdrv104.sys", "asrdrv106.sys", "asio.sys", "asio2.sys",
@@ -129,8 +130,8 @@ void vulnerableDrivers(Segment& s) {
     };
     for (const char* d : inUse) {
         const QString target = u("*\\") + u(d);
-        s.image(Allow, u("Program Files 下签名健康的厂商驱动 ") + u(d))
-            .target(u("?:\\Program Files*\\*\\") + u(d)).targetSignedOnly();
+        // Known vulnerable versions stay reviewable regardless of installation
+        // directory and signature. A valid signature does not remove a vulnerability.
         s.image(Ask, u("加载已知可被利用的驱动 ") + u(d) + u("(BYOVD,T1068)"))
             .target(target).disableSignedAutoAllow();
     }

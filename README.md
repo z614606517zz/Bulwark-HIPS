@@ -7,7 +7,7 @@
 - **说得清原因**：询问和拦截会给出风险分、证据链、ATT&CK 技术编号和还原后的命令行。
 - **三套界面风格**：机甲、卡哇伊、金刚。
 
-当前版本 `1.0.9`。由内核驱动、后台服务、桌面界面和 AMSI Provider 组成，代码使用 C++20、Qt 6 和 Windows Driver Kit。
+当前安装包版本 `1.0`（程序内部版本 `1.0.9`）。由内核驱动、后台服务、桌面界面和 AMSI Provider 组成，代码使用 C++20、Qt 6 和 Windows Driver Kit。
 
 ![仪表盘 · 金刚风格](docs/images/dashboard-titan.png)
 
@@ -60,7 +60,7 @@
 
 ## 下载安装
 
-1. 到 [Releases](../../releases) 页面下载安装包 `Bulwark-Setup-1.0.9-Full-*.exe`。目前是预发布版本，只支持 64 位 Windows 10/11。
+1. 下载 [Bulwark-Setup-1.0.exe](https://github.com/z614606517zz/Bulwark-HIPS/releases/download/v1.0/Bulwark-Setup-1.0.exe)，或到 [1.0 发布页](https://github.com/z614606517zz/Bulwark-HIPS/releases/tag/v1.0) 获取安装包和 SHA-256 校验文件。目前是预发布版本，只支持 64 位 Windows 10/11。
 2. 运行安装包（需要管理员权限）。它会：
    - 把程序装到 `C:\Program Files\Bulwark`（可以改目录），并把数据目录 `%ProgramData%\Bulwark` 的权限收紧到只有 SYSTEM 和管理员可以访问；
    - 注册后台服务 `BulwarkService`，安装内核驱动 `Bulwark.sys`，注册 64 位 AMSI Provider；
@@ -69,9 +69,9 @@
 
 安装前请知道：
 
-- 安装包和其中的服务、界面、AMSI 组件**没有代码签名**。
-- 包内的内核驱动 `Bulwark.sys` 携带的数字签名证书**属于另一家公司且已于 2014 年过期**，不是本项目自己的签名。请勿在非测试环境信任。
-- **覆盖安装会清空旧数据**：旧版本留下的防护记录、隔离区文件和设置都会被清掉，装完是全新状态。
+- 安装包和其中的服务、界面、AMSI 组件**没有代码签名**。本次安装包未附加用于自动退出防护的发布签名，覆盖安装前请先在界面关闭实时防护。
+- 包内 `Bulwark.sys` 保留提供者添加的签名。本机标准校验报告主签名根不受信任，附加签名证书属于另一家公司且已于 2014 年过期；用户反馈在其环境可以加载。它不是本项目经微软签发的正式驱动签名。
+- **1.0 覆盖安装保留现有数据和配置**：保留安装目录已有的 `appsettings.json`，不清空 `%ProgramData%\Bulwark` 中的防护记录和隔离区。
 - 覆盖安装不用先关防护：点了「安装」之后，安装程序会请已装版本的后台服务先退出防护，再换文件、装驱动、启动服务。有三种情况服务不会退出防护，安装程序会停在提示上，要先在界面里关闭实时防护再点「重试」：已装的是不带这项功能的旧版本；安装包没有发布签名（比如自己编译的）；静默安装（`/S`）。卸载同样不用先关防护，见下。
 - 安装包没有做过系统性的安装测试。
 
@@ -301,7 +301,7 @@ ctest --test-dir cpp\build -C Release --output-on-failure
 - 选项页可以开启测试签名模式（需要重启），并用本机个人证书自动签名驱动；两项都不选则只装用户态组件；
 - 卸载时可以选择是否删除驱动、是否退出测试模式。
 
-Release 页面的安装包与它不同：没有选项页，不开启测试签名模式，并且安装时会清空旧数据（见「[下载安装](#下载安装)」）。
+Release 页面的 1.0 安装包使用 `installer/BulwarkSetup-presigned.nsi`：保留包内驱动签名、没有测试签名选项页，覆盖安装保留已有配置和数据。载荷准备完成后可在 `installer` 目录运行 `tools\nsis\Bin\makensis.exe BulwarkSetup-presigned.nsi` 重新生成安装包。
 
 #### 发布签名
 

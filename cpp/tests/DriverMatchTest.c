@@ -916,6 +916,40 @@ main(void)
     TestSubtreeHits();
     TestReadGuard();
 
+    Check(RgDataHit(L"\\.SSH\\ID_RSA$", L"C:\\Users\\Alice\\.ssh\\id_rsa"),
+          "credential: exact private key path is protected");
+    Check(!RgDataHit(L"\\.SSH\\ID_RSA$", L"C:\\Users\\Alice\\.ssh\\id_rsa.pub"),
+          "credential: public key is not a private key");
+    Check(RgDataHit(L"\\.AWS\\CREDENTIALS$|\\AMAZON\\AWSCLIV2\\AWS.EXE", L"C:\\Users\\Alice\\.aws\\credentials"),
+          "credential: anchored data works with designated-reader suffix");
+    {
+        UCHAR address[16] = {0};
+        Check(BlwParseIpv6Hex(L"20010db8000000000000000000000001", 32, address)
+              && address[0] == 0x20 && address[1] == 1 && address[15] == 1,
+              "network: IPv6 config decodes all 128 bits in network order");
+        Check(!BlwParseIpv6Hex(L"20010db800000000000000000000000Z", 32, address),
+              "network: invalid hex rejected");
+        Check(!BlwParseIpv6Hex(L"1234", 4, address), "network: truncated IPv6 rejected");
+    }
+
+    {
+        static const wchar_t systemVolume[] = L"\\Device\\HarddiskVolume3";
+        BlwSetSystemVolume(L'C', systemVolume, Chars(systemVolume));
+        Check(BlwIsRansomGuardSystemWriter(L"\\Device\\HarddiskVolume3\\Windows\\System32\\notepad.exe",
+              Chars(L"\\Device\\HarddiskVolume3\\Windows\\System32\\notepad.exe")),
+              "writer: exact OS editor on the system volume");
+        Check(!BlwIsRansomGuardSystemWriter(L"\\Device\\HarddiskVolume3\\Program Files\\Audit\\payload.exe",
+              Chars(L"\\Device\\HarddiskVolume3\\Program Files\\Audit\\payload.exe")),
+              "writer: Program Files is not a blanket authorization");
+        Check(!BlwIsRansomGuardSystemWriter(L"\\Device\\HarddiskVolume3\\Windows\\System32\\payload.exe",
+              Chars(L"\\Device\\HarddiskVolume3\\Windows\\System32\\payload.exe")),
+              "writer: arbitrary system-directory images are not OS writers");
+        Check(!BlwIsRansomGuardSystemWriter(L"\\Device\\HarddiskVolume5\\Windows\\System32\\notepad.exe",
+              Chars(L"\\Device\\HarddiskVolume5\\Windows\\System32\\notepad.exe")),
+              "writer: OS writer paths remain pinned to the system volume");
+        BlwSetSystemVolume(0, NULL, 0);
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_failed);
     return g_failed;
 }

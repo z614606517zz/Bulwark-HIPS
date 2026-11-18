@@ -369,14 +369,17 @@ BOOLEAN
 BlwReadGuardDataHit(_In_ const BLW_PROTECTED_PATH* Entry,
                     _In_reads_(Chars) PCWSTR Up, _In_ USHORT Chars)
 {
-    const USHORT n = BlwReadGuardDataChars(Entry);
+    USHORT n = BlwReadGuardDataChars(Entry);
     const PCWSTR p = Entry->Path;
+    const BOOLEAN exactTail = n > 0 && p[n - 1] == L'$';
+    if (exactTail) --n;
     USHORT s;
 
     if (Up == NULL || n == 0 || n > Chars) {
         return FALSE;
     }
     for (s = 0; (USHORT)(s + n) <= Chars; s++) {
+        if (exactTail && (USHORT)(s + n) != Chars) continue;
         if (Up[s] != p[0] || Up[s + n - 1] != p[n - 1]) {
             continue;
         }
@@ -715,6 +718,10 @@ BlwIsInjectionTelemetryTarget(_In_opt_ PCWSTR Path, _In_ USHORT Chars)
         BLW_NAME(L"csrss.exe"),
         BLW_NAME(L"services.exe"),
         BLW_NAME(L"smss.exe"),
+        BLW_NAME(L"wininit.exe"),
+        BLW_NAME(L"lsaiso.exe"),
+        BLW_NAME(L"bulwark_service.exe"),
+        BLW_NAME(L"bulwark_ui.exe"),
         BLW_NAME(L"WeChat.exe"),
         BLW_NAME(L"Weixin.exe"),
         BLW_NAME(L"WXWork.exe"),
@@ -723,6 +730,45 @@ BlwIsInjectionTelemetryTarget(_In_opt_ PCWSTR Path, _In_ USHORT Chars)
     };
 
     return BlwImageNameIn(kTargets, RTL_NUMBER_OF(kTargets), Path, Chars);
+}
+
+BOOLEAN
+BlwIsRansomGuardSystemWriter(_In_opt_ PCWSTR Path, _In_ USHORT Chars)
+{
+    static const BLW_NAME_ENTRY kImages[] = {
+        BLW_NAME(L"ntoskrnl.exe"), BLW_NAME(L"svchost.exe"), BLW_NAME(L"services.exe"),
+        BLW_NAME(L"lsass.exe"), BLW_NAME(L"winlogon.exe"), BLW_NAME(L"smss.exe"),
+        BLW_NAME(L"wininit.exe"), BLW_NAME(L"csrss.exe"), BLW_NAME(L"dllhost.exe"),
+        BLW_NAME(L"TrustedInstaller.exe"), BLW_NAME(L"TiWorker.exe"),
+        BLW_NAME(L"RuntimeBroker.exe"), BLW_NAME(L"backgroundTaskHost.exe"),
+        BLW_NAME(L"SearchIndexer.exe"), BLW_NAME(L"SearchProtocolHost.exe"),
+        BLW_NAME(L"wbengine.exe"), BLW_NAME(L"VSSVC.exe"),
+        BLW_NAME(L"notepad.exe"), BLW_NAME(L"mspaint.exe"), BLW_NAME(L"wordpad.exe"),
+        BLW_NAME(L"MsMpEng.exe"), BLW_NAME(L"NisSrv.exe"), BLW_NAME(L"MpCmdRun.exe")
+    };
+    static const BLW_NAME_ENTRY kRoots[] = {
+        BLW_NAME(L"\\Windows\\System32\\"), BLW_NAME(L"\\Windows\\SysWOW64\\"),
+        BLW_NAME(L"\\Windows\\WinSxS\\"), BLW_NAME(L"\\Windows\\servicing\\"),
+        BLW_NAME(L"\\Windows\\SystemApps\\"), BLW_NAME(L"\\Windows\\UUS\\"),
+        BLW_NAME(L"\\Program Files\\Windows Defender\\"),
+        BLW_NAME(L"\\ProgramData\\Microsoft\\Windows Defender\\")
+    };
+    static const WCHAR kExplorer[] = L"\\Windows\\Explorer.exe";
+    USHORT off;
+    USHORT relativeChars;
+    ULONG i;
+    if (Path == NULL || Chars == 0) return FALSE;
+    off = BlwSystemVolumeRelativeOffset(Path, Chars);
+    if (off == 0) return FALSE;
+    relativeChars = (USHORT)(Chars - off);
+    if (relativeChars == RTL_NUMBER_OF(kExplorer) - 1 &&
+        BlwStartsWithCI(Path + off, relativeChars, kExplorer, (USHORT)(RTL_NUMBER_OF(kExplorer) - 1)))
+        return TRUE;
+    if (!BlwImageNameIn(kImages, RTL_NUMBER_OF(kImages), Path, Chars)) return FALSE;
+    for (i = 0; i < RTL_NUMBER_OF(kRoots); ++i)
+        if (BlwStartsWithCI(Path + off, relativeChars, kRoots[i].Name, kRoots[i].Chars))
+            return TRUE;
+    return FALSE;
 }
 
 static BOOLEAN
@@ -864,6 +910,20 @@ BlwFileIsUninstallerData(_In_ PBLW_MATCH_CTX Ctx)
         if (name[i] < L'0' || name[i] > L'9') {
             return FALSE;
         }
+    }
+    return TRUE;
+}
+
+BOOLEAN BlwParseIpv6Hex(_In_reads_(Chars) PCWSTR Hex, _In_ USHORT Chars, _Out_writes_(16) UCHAR* Address)
+{
+    USHORT i;
+    if (!Hex || !Address || Chars != 32) return FALSE;
+    for (i=0; i<32; ++i) {
+        WCHAR c = BlwUpcaseChar(Hex[i]); UCHAR v;
+        if (c >= L'0' && c <= L'9') v = (UCHAR)(c-L'0');
+        else if (c >= L'A' && c <= L'F') v = (UCHAR)(c-L'A'+10);
+        else return FALSE;
+        if ((i&1)==0) Address[i/2]=(UCHAR)(v<<4); else Address[i/2]|=v;
     }
     return TRUE;
 }

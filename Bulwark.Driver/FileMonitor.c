@@ -980,6 +980,7 @@ BlwReadGuardDirRenameDenies(_In_ PBLW_MATCH_CTX Ctx, _In_ ULONG ActorPid,
             continue;
         }
         dataChars = BlwReadGuardDataChars(&g_Blw.ReadGuard[i]);
+        if (dataChars && g_Blw.ReadGuard[i].Path[dataChars - 1] == L'$') --dataChars;
         if (dataChars != 0 &&
             BlwPatternHitsSubtree(Ctx->Up, Ctx->Chars, last, g_Blw.ReadGuard[i].Path, dataChars,
                                   BlwRenameProbeExists, &probe)) {
@@ -1580,9 +1581,8 @@ BlwPreWrite(
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
     byteOffset = Data->Iopb->Parameters.Write.ByteOffset;
-    if (byteOffset.QuadPart != 0) {
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+    // Nonzero and append offsets may carry partial encryption just as offset zero does.
+    UNREFERENCED_PARAMETER(byteOffset);
 
     if (!BlwWriteSampleShouldReport(HandleToULong(PsGetCurrentProcessId()),
                                     Data->Iopb->TargetFileObject)) {
@@ -1603,5 +1603,28 @@ BlwPreWrite(
     BlwReportFileTelemetry(BlwEventFileRename, &nameInfo->Name);
 
     FltReleaseFileNameInformation(nameInfo);
+    return FLT_PREOP_SUCCESS_NO_CALLBACK;
+}
+
+FLT_PREOP_CALLBACK_STATUS
+BlwPreAcquireSection(_Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects,
+                    _Flt_CompletionContext_Outptr_ PVOID* CompletionContext)
+{
+    PFLT_FILE_NAME_INFORMATION name = NULL;
+    const ULONG pid = FltGetRequestorProcessId(Data);
+    const ULONG protection = Data->Iopb->Parameters.AcquireForSectionSynchronization.PageProtection & 0xff;
+    UNREFERENCED_PARAMETER(FltObjects);
+    *CompletionContext = NULL;
+    if (!g_Blw.Active || !g_Blw.FileTelemetryEnabled || pid <= 4 || KeGetCurrentIrql() != PASSIVE_LEVEL ||
+        Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection ||
+        (protection != PAGE_READWRITE && protection != PAGE_EXECUTE_READWRITE))
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    // Never issue a filesystem name lookup while section synchronization locks are held.
+    if (NT_SUCCESS(FltGetFileNameInformation(Data,
+        FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_CACHE_ONLY, &name))) {
+        if (BlwWriteSampleShouldReport(pid, Data->Iopb->TargetFileObject))
+            BlwReportEvent(BlwEventMappedWrite, pid, 0, &name->Name, NULL, 0, 0);
+        FltReleaseFileNameInformation(name);
+    }
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
 }

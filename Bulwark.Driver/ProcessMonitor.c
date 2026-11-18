@@ -89,50 +89,9 @@ BlwImageIsLolBin(_In_ PCWSTR Path, _In_ USHORT Chars)
 BOOLEAN
 BlwImageIsTrustedSystemPath(_In_ PCWSTR Path, _In_ USHORT Chars)
 {
-    static const BLW_NAME_ENTRY kPrefixes[] = {
-        BLW_NAME(L"\\Windows\\System32\\"),
-        BLW_NAME(L"\\Windows\\SysWOW64\\"),
-        BLW_NAME(L"\\Windows\\WinSxS\\"),
-        BLW_NAME(L"\\Windows\\servicing\\"),
-        BLW_NAME(L"\\Windows\\SystemApps\\"),
-        BLW_NAME(L"\\Windows\\ImmersiveControlPanel\\"),
-        BLW_NAME(L"\\Windows\\Microsoft.NET\\"),
-        BLW_NAME(L"\\Windows\\UUS\\"),
-
-        BLW_NAME(L"\\Program Files\\"),
-        BLW_NAME(L"\\Program Files (x86)\\"),
-        BLW_NAME(L"\\Program Files\\Windows Defender\\"),
-        BLW_NAME(L"\\Program Files (x86)\\Windows Defender\\"),
-        BLW_NAME(L"\\ProgramData\\Microsoft\\Windows Defender\\"),
-    };
-
-    USHORT off;
-    ULONG  i;
-
-    if (Path == NULL || Chars == 0) {
-        return FALSE;
-    }
-    off = BlwSystemVolumeRelativeOffset(Path, Chars);
-    if (off == 0) {
-        return FALSE;
-    }
-    for (i = 0; i < RTL_NUMBER_OF(kPrefixes); i++) {
-        if (BlwStartsWithCI(Path + off, (USHORT)(Chars - off),
-                            kPrefixes[i].Name, kPrefixes[i].Chars)) {
-            return TRUE;
-        }
-    }
-
-    {
-        static const WCHAR kExplorer[] = L"\\Windows\\Explorer.exe";
-        const USHORT relChars = (USHORT)(Chars - off);
-        const USHORT explorerChars = (USHORT)(RTL_NUMBER_OF(kExplorer) - 1);
-        if (relChars == explorerChars &&
-            BlwStartsWithCI(Path + off, relChars, kExplorer, explorerChars)) {
-            return TRUE;
-        }
-    }
-    return FALSE;
+    // Installation directories do not grant write authority. Keep a narrow OS
+    // component policy; verified document editors and user grants use GuardWriters.
+    return BlwIsRansomGuardSystemWriter(Path, Chars);
 }
 
 static BOOLEAN

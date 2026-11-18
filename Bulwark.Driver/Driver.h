@@ -58,6 +58,8 @@ C_ASSERT((BLW_WRITE_SLOTS & BLW_WRITE_SLOT_MASK) == 0);
 
 typedef struct _BLW_BLOCK_IP {
     ULONG   IpV4;              // 主机字节序
+    UCHAR   IpV6[16];
+    BOOLEAN IsV6;
     USHORT  Port;              // 0 = 任意端口
     BOOLEAN InUse;
 } BLW_BLOCK_IP, *PBLW_BLOCK_IP;
@@ -320,6 +322,10 @@ FLT_POSTOP_CALLBACK_STATUS BlwPostCreate(
     _In_ FLT_POST_OPERATION_FLAGS Flags);
 
 // IRP_MJ_WRITE 预操作:就地加密检测(采样遥测,绝不拦截)+ 引导区扇区写硬拦。
+FLT_PREOP_CALLBACK_STATUS BlwPreAcquireSection(
+    _Inout_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS FltObjects,
+    _Flt_CompletionContext_Outptr_ PVOID* CompletionContext);
+
 FLT_PREOP_CALLBACK_STATUS BlwPreWrite(
     _Inout_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS FltObjects,
@@ -426,6 +432,7 @@ NTSTATUS BlwUnregisterWfp(void);
 BOOLEAN  BlwWfpHasCallouts(void);
 void     BlwClearBlockList(void);
 void     BlwAddBlockIp(_In_ ULONG IpV4, _In_ USHORT Port);
+BOOLEAN  BlwAddBlockIp6(_In_reads_(32) PCWSTR Hex, _In_ USHORT Port);
 
 NTSTATUS BlwInitCommunication(_In_ PDRIVER_OBJECT DriverObject);
 void     BlwTearDownCommunication(void);

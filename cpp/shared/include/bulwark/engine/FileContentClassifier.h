@@ -1,23 +1,28 @@
 #pragma once
 #include <QByteArray>
 #include <QString>
+#include "bulwark/engine/ZipIntegrity.h"
 
 namespace bulwark::engine {
 
-// 文件开头的一份取样。读盘由服务端做,引擎只对取到的字节下判断。
+// 有界的头、中、尾取样。未取到的范围不表示已经验证；读盘由服务端完成。
 struct FileContentSample {
     // Unavailable:这个位置读不了(网络盘、云端占位文件)。Busy:这会儿读不到(被独占、读盘超时),稍后再试。
     enum class Kind { Unavailable, Busy, Missing, Present };
     Kind kind = Kind::Unavailable;
     qint64 size = 0;
     QByteArray head;
+    QByteArray middle;
+    QByteArray tail;
+    FileIntegrity integrity = FileIntegrity::Unchecked;
 };
 
 enum class ContentVerdict {
-    Recognized,   // 内容是认得出的格式(已知文件头,或该类型允许的文本):文件还是好的
+    Recognized,   // 已取样范围符合已知格式，不保证未取样的正文完整
     Scrambled,    // 名字说它是文档 / 图片 / …,内容却是认不出格式的高熵数据
     Unsettled,    // 空文件或开头全是零:多半还没写完,过一会儿再看
     Unknown,      // 说明不了什么(未知类型、取样太小、类型与内容对不上但不是乱码)
+    Damaged,      // 结构/正文校验失败，不单独证明恶意行为
 };
 
 // 文件名自称的类型。
@@ -33,6 +38,7 @@ struct ContentClaim {
 class FileContentClassifier {
 public:
     static constexpr int kHeadBytes = 4096;
+    static constexpr int kTailBytes = 65557; // maximum ZIP EOCD + comment
 
     static ContentClaim claimOf(const QString& lowerName);
     static ContentVerdict classify(const ContentClaim& claim, const FileContentSample& sample);

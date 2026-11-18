@@ -26,6 +26,7 @@ public:
         QStringList reasons;
         bool hardSignal = false;
         bool containmentRequired = false;
+        QStringList confirmedDamagePaths;
     };
 
     void setFileStateProbe(FileStateProbe probe);
@@ -52,6 +53,7 @@ private:
         QHash<QString, qint64> scrambled;      // 已有文件的内容成了乱码(键是原文件路径)
         QHash<QString, qint64> cipherCopies;   // 旁边新出现了乱码副本、原件还在(键是原文件路径)
         QHash<QString, qint64> markedFiles;
+        QHash<QString, qint64> structuralDamage;
     };
 
     struct Activity {
@@ -69,6 +71,7 @@ private:
         bool convicted = false;
         // PID 会被复用:主体映像变了就是另一个进程,状态从头算。
         QString actorPath;
+        std::optional<quint64> actorCreationFileTime;
     };
 
     static void pruneLedger(Ledger& ledger, qint64 nowMs);

@@ -8684,7 +8684,7 @@
   },
   {
    "label": "pos-onedrive-run-entry",
-   "note": "正向:OneDrive 维护自身开机项(Run\\OneDrive),应放行。",
+   "note": "已签名程序写 Run 开机项仍保留 Ask；不把有效签名单独作为修改持久化的授权。",
    "event": {
     "actorCertThumbprint": "",
     "actorFileSize": 65536,
@@ -11009,7 +11009,7 @@
   },
   {
    "label": "det-token-sedebugprivilege",
-   "note": "检出:启用 SeDebugPrivilege(T1134),应 Block。",
+   "note": "仅在参数中提及 SeDebugPrivilege 不证明实际启用特权，不应仅凭名字硬拦；实际调用另有正向规则。",
    "event": {
     "actorCertThumbprint": "",
     "actorFileSize": 65536,
@@ -11556,7 +11556,7 @@
   },
   {
    "label": "fp-msi-afterburner-rtcore64-program-files",
-   "note": "误报回归:MSI Afterburner 开机加载装在 Program Files 下、签名健康的 RTCore64.sys,不再每次询问。",
+   "note": "已知可利用驱动即使安装在 Program Files 且签名有效仍须 Ask；业务例外由用户明确授权。",
    "event": {
     "actorPath": "内核(驱动加载)",
     "actorPid": 0,
@@ -12490,7 +12490,7 @@
   },
   {
    "label": "det-ps-timestomp-datetime-cast",
-   "note": "检出:PowerShell 把落地载荷的创建时间改成写死的过去日期([datetime] 转换写法),应 Block。",
+   "note": "PowerShell 通过变量改写指定时间，当前命令行证据不足以可靠绑定文件类型，保留 Ask。",
    "event": {
     "actorPath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
     "actorPid": 9347,
@@ -13250,7 +13250,7 @@
   },
   {
    "label": "det-rat-family-drop",
-   "note": "检出:未签名程序投放 AsyncRAT 客户端,应 Block。",
+   "note": "投放文件名带 AsyncRAT 长前缀，单凭文件名按 Ask；确证恶意由行为指标补充。",
    "event": {
     "actorPath": "C:\\Users\\u\\AppData\\Local\\Temp\\inst.exe",
     "actorPid": 9459,
@@ -13386,7 +13386,7 @@
   },
   {
    "label": "fp-shell-ext-approved-regsvr32",
-   "note": "误报哨兵:安装器经 regsvr32 注册 7-Zip 右键菜单扩展(DllRegisterServer 写 Shell Extensions\\Approved),应放行。",
+   "note": "安装器注册 Shell 扩展属于持久化变更，保留 Ask，不能仅凭签名静默放行。",
    "event": {
     "actorPath": "C:\\Windows\\System32\\regsvr32.exe",
     "actorPid": 9471,

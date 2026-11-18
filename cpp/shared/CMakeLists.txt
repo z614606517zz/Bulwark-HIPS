@@ -21,8 +21,10 @@ add_library(bulwark_shared STATIC
     src/engine/ScriptAnalyzer.cpp
     src/engine/DgaDomainAnalyzer.cpp
     src/engine/NetworkBehaviorMonitor.cpp
+    src/engine/CrossEventMonitor.cpp
     src/engine/DownloaderBehaviorMonitor.cpp
     src/engine/FileContentClassifier.cpp
+    src/engine/ZipIntegrity.cpp
     src/engine/RansomwareBehaviorMonitor.cpp
     src/engine/BaselineAnalyzer.cpp
     src/engine/CommandBurstMonitor.cpp
@@ -54,9 +56,19 @@ add_library(bulwark_shared STATIC
 target_include_directories(bulwark_shared
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-target_link_libraries(bulwark_shared PUBLIC Qt6::Core)
+target_link_libraries(bulwark_shared PUBLIC Qt6::Core Qt6::Network)
 
 target_compile_features(bulwark_shared PUBLIC cxx_std_20)
+
+add_library(bulwark_inflate STATIC ../third_party/miniz/miniz_tinfl.c)
+set_source_files_properties(../third_party/miniz/miniz_tinfl.c PROPERTIES LANGUAGE CXX)
+set_target_properties(bulwark_inflate PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+target_include_directories(bulwark_inflate PUBLIC ../third_party/miniz)
+target_compile_definitions(bulwark_inflate PRIVATE MINIZ_NO_ARCHIVE_APIS MINIZ_NO_DEFLATE_APIS MINIZ_NO_ZLIB_APIS MINIZ_NO_TIME MINIZ_NO_STDIO)
+if(MSVC)
+    target_compile_options(bulwark_inflate PRIVATE /W0)
+endif()
+target_link_libraries(bulwark_shared PRIVATE bulwark_inflate)
 
 if(MSVC)
     target_compile_options(bulwark_shared PRIVATE /W4 /permissive- /utf-8)

@@ -1164,8 +1164,8 @@ QWidget* pages::settings(IpcClient* ipc)
 
     ToggleSwitch* guardSw = nullptr;
     s = addSection(QStringLiteral("ransom"), QStringLiteral("lock"), u("受保护目录(反勒索)"),
-                   u("名单里的目录只允许【可信写入者】改:Windows 自身、装在 Program Files 下的程序、"
-                     "你信任的程序,以及本软件。其余程序对这些目录的写入、新建、删除、重命名会被内核在"
+                   u("名单里的目录只允许【可信写入者】改:必要的 Windows 组件、已核对身份的办公软件、"
+                     "你明确信任的程序,以及本软件。安装在 Program Files 本身不授予写权限。其余程序的写入、新建、删除、重命名会被内核在"
                      "「打开文件」那一步直接拒绝 —— 勒索软件连第一个字节都写不进去。只读不受影响,"
                      "备份软件照常能读。"));
     {

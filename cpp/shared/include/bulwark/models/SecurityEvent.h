@@ -46,6 +46,8 @@ struct SecurityEvent {
     QString originatorPath;
     int parentPid = 0;
     QString parentPath;
+    std::optional<quint64> parentCreationFileTime;
+    QString actorUserSid;
     // 进程创建事件里真正调用 CreateProcess 的进程(只在与 parentPid 不同时填)。父进程可以用
     // PROC_THREAD_ATTRIBUTE_PARENT_PROCESS 随意指定;富化阶段核实后,伪造时把 parent* 换成真实创建者,
     // 被冒用的父进程移到 spoofedParent*。
@@ -82,6 +84,16 @@ struct SecurityEvent {
     QString target;
     QString detail;
     QString correlationId;
+    // Audit subjects stay separate from a local process identity. A share access
+    // check, or its temporal association, does not prove who wrote the bytes.
+    QString remoteAddress;
+    QString remoteUserSid;
+    QString remoteLogonId;
+    QString remoteShare;
+    QString remoteOriginKind;
+    QString auditRecordId;
+    QString auditOperation;
+    quint32 auditAccessMask = 0;
 
     // RegistryWrite 的操作方向。内核的 Set/DeleteValue/DeleteKey 三态被折叠成
     // EventType::RegistryWrite 后,靠这个字段保住方向,供规则区分加固写入与削弱写入。
@@ -112,8 +124,9 @@ struct SecurityEvent {
     bool kernelRightsStripped = false;
     bool ransomwareContainmentRequired = false;
     bool scriptContainmentRequired = false;
+    bool correlationContainmentRequired = false;
     bool requiresTransientContainment() const {
-        return ransomwareContainmentRequired || scriptContainmentRequired;
+        return ransomwareContainmentRequired || scriptContainmentRequired || correlationContainmentRequired;
     }
 
     QString processInstanceKey() const;

@@ -107,3 +107,7 @@ _check_*.png
 /driver_diag.txt
 /t_compile.txt
 /q22-err.txt
+
+# Generated installers are published as GitHub Release assets.
+installer/Bulwark-Setup-*.exe
+installer/Bulwark-Setup-*.exe.sha256

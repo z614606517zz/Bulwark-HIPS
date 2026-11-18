@@ -631,16 +631,21 @@ bool Worker::isDimensionEnabled(bulwark::EventType type) const {
     switch (type) {
         case bulwark::EventType::ProcessCreate:
         case bulwark::EventType::ProcessTerminate:
+        case bulwark::EventType::ThreadAccess:
         case bulwark::EventType::RemoteThread:
         case bulwark::EventType::ImageLoad:
             return settings_->processProtection;
+        case bulwark::EventType::DiskProtectionChange:
+        case bulwark::EventType::FileRead:
         case bulwark::EventType::FileWrite:
         case bulwark::EventType::FileDelete:
             return settings_->fileProtection;
         case bulwark::EventType::RegistryWrite:
+        case bulwark::EventType::WmiSubscription:
             return settings_->registryProtection;
         case bulwark::EventType::SelfProtect:
             return settings_->selfProtection;
+        case bulwark::EventType::RemoteShareAccess:
         case bulwark::EventType::NetworkConnect:
         case bulwark::EventType::DnsQuery:
             return settings_->networkProtection;
@@ -837,6 +842,30 @@ void Worker::enrich(SecurityEvent& e) {
     if (e.type == bulwark::EventType::ProcessCreate && e.creatorPid > 4 && e.creatorPid != e.parentPid
         && e.creatorPid != e.actorPid)
         attributeSpoofedParent(e);
+
+    if (const auto instance = ProcessInspector::tryGetProcessInstance(e.actorPid)) {
+        if (!e.actorCreationFileTime) e.actorCreationFileTime = instance->creationFileTime;
+        // Never associate a recycled PID's token with an older event.
+        if (e.actorCreationFileTime == instance->creationFileTime) {
+            static thread_local QHash<QString, QString> sidCache;
+            const QString key = e.processInstanceKey();
+            if (sidCache.size() >= 1024) sidCache.clear();
+            if (!sidCache.contains(key)) {
+                const QString sid = ProcessInspector::tryGetUserSid(e.actorPid);
+                if (ProcessInspector::isCurrentProcessInstance(*instance)) sidCache.insert(key, sid);
+            }
+            e.actorUserSid = sidCache.value(key);
+            if (e.parentPid <= 0) {
+                e.parentPid = ProcessInspector::tryGetParentPid(e.actorPid);
+                e.parentPath = ProcessInspector::tryGetProcessImagePath(e.parentPid);
+            }
+        }
+    }
+    if (const auto instance = ProcessInspector::tryGetProcessInstance(e.parentPid)) {
+        // A PID now owned by a process born after its alleged child is a reused parent PID.
+        if (e.actorCreationFileTime && instance->creationFileTime <= *e.actorCreationFileTime)
+            e.parentCreationFileTime = instance->creationFileTime;
+    }
 
     const bool selfComponent = engine_ && engine_->isSelfComponent(e);
 

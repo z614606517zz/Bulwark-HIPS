@@ -94,7 +94,17 @@ QByteArray withHeader(const QByteArray& magic, quint32 seed, int size = 4096)
 }
 
 QByteArray jpeg(quint32 seed) { return withHeader(QByteArray::fromHex("ffd8ffe000104a4649460001"), seed); }
-QByteArray docx(quint32 seed) { return withHeader(QByteArray("PK\x03\x04", 4), seed); }
+QByteArray docx(quint32 seed) {
+    QByteArray b = withHeader(QByteArray("PK\x03\x04", 4), seed);
+    // Minimal bounded ZIP local header; a magic plus random header fields is not
+    // a valid fixture for an intact OOXML container.
+    for (int i = 4; i < 30; ++i) b[i] = '\0';
+    b[4] = 20;
+    b[8] = 8;
+    b[26] = 1;
+    b[30] = 'x';
+    return b;
+}
 QByteArray pdf(quint32 seed) { return withHeader(QByteArray("%PDF-1.7\n"), seed); }
 QByteArray djvu(quint32 seed) { return withHeader(QByteArray("AT&TFORM"), seed); }
 QByteArray text() { return QByteArray("meeting notes, line one\r\nline two\r\n").repeated(60); }
@@ -446,7 +456,8 @@ void testInPlaceEncryption()
                   && mentions(last, "无法识别") && mentions(last, "q1.docx"),
               "4 existing documents turned into ciphertext across two folders alert at the 4th, naming files");
         const Result after = lab.tick(7501, 40);
-        check(after.score == 0, "the containment alert is reported once");
+        check(after.score >= 50 && after.containmentRequired,
+              "subsequent activity retains containment while the original decision is pending");
     }
     {
         // 同一目录同一种文件:要 8 个。
@@ -869,7 +880,7 @@ void testEngineEndToEnd()
               "engine: the 4th document turned into ciphertext is stopped and marked for containment");
     }
     {
-        // 签名健康的主体:只数数量,不读它动过的文件。
+        // Signed editors use the same content checks and retain valid images.
         FakeDisk disk;
         bulwark::engine::RuleEngine engine;
         engine.trustSignedActors = false;
@@ -882,7 +893,7 @@ void testEngineEndToEnd()
             e.actorSigned = true;
             engine.evaluate(e);
         }
-        check(disk.reads == 0, "engine: files touched by a signed actor are never read");
+        check(disk.reads > 0, "engine: signed actors are subject to content inspection too");
     }
 }
 

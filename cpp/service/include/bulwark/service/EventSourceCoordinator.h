@@ -40,6 +40,7 @@ public:
     void setKernelStateChanged(KernelStateHandler fn) { stateChanged_ = std::move(fn); }
 
     void addAuxSource(EventSource* s);
+    void setEventDecorator(std::function<void(bulwark::SecurityEvent&)> fn) { decorator_=std::move(fn); }
 
     void setKernelEnabled(bool on);
     void configureBehaviorMonitor(bool enabled, bool canaryEnabled);
@@ -108,6 +109,8 @@ private slots:
 
 private:
     void notifyKernelState(bool connected, const QString& detail);
+    void emitObserved(const bulwark::SecurityEvent& e);
+    std::function<void(bulwark::SecurityEvent&)> decorator_;
 
     int pushConfiguredIpBlocks();
     void setFallbackEnforcement(bool active);

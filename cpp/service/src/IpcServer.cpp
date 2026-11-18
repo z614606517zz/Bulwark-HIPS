@@ -181,7 +181,7 @@ void IpcServer::handleLine(QLocalSocket* sock, const QString& line) {
                 if (type.isDouble()) {
                     const int value = type.toInt(-1);
                     if (value < static_cast<int>(bulwark::EventType::ProcessCreate)
-                        || value > static_cast<int>(bulwark::EventType::ScriptScan)) {
+                        || value > static_cast<int>(bulwark::EventType::RemoteShareAccess)) {
                         log().warning(QStringLiteral("已拒绝事件类型越界的 AddRule(type=%1)").arg(value));
                         break;
                     }

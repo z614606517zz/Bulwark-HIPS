@@ -2,6 +2,7 @@
 #include "bulwark/models/SecurityEvent.h"
 #include "bulwark/json/JsonSupport.h"
 #include "bulwark/Clock.h"
+#include "bulwark/engine/NetworkEndpoint.h"
 #include <QJsonArray>
 
 namespace bulwark {
@@ -106,7 +107,13 @@ bool DefenseRule::matches(const SecurityEvent& e) const {
         return false;
 
     if (!targetPattern.isEmpty()) {
-        const bool matchTarget = wildcardMatch(targetPattern, e.target);
+        bool matchTarget = wildcardMatch(targetPattern, e.target);
+        if (!matchTarget && e.type == EventType::NetworkConnect) {
+            const auto expected = engine::NetworkEndpoint::parse(targetPattern);
+            const auto actual = engine::NetworkEndpoint::parse(e.target);
+            if (expected && actual && expected->address == actual->address
+                && (expected->port == 0 || expected->port == actual->port)) matchTarget = true;
+        }
         const bool allowActorFallback = (e.type == EventType::ProcessCreate);
         const bool matchActor = allowActorFallback && !e.actorPath.isEmpty() &&
                                 wildcardMatch(targetPattern, e.actorPath);
@@ -278,7 +285,7 @@ DefenseRule DefenseRule::fromJson(const QJsonObject& o) {
     if (tv.isDouble()) {
         const int rawType = tv.toInt(-1);
         if (rawType >= static_cast<int>(EventType::ProcessCreate)
-            && rawType <= static_cast<int>(EventType::ScriptScan))
+            && rawType <= static_cast<int>(EventType::RemoteShareAccess))
             r.type = static_cast<EventType>(rawType);
         else
             invalidEnum = true;

@@ -327,31 +327,10 @@ std::optional<QString> RuleEngine::trustNoteForPath(const QString& path) const {
     return userTrustNoteForPath(p);
 }
 
-bool RuleEngine::targetIsTrustEligible(EventType t) {
-    switch (t) {
-        case EventType::ImageLoad:
-        case EventType::FileWrite:
-        case EventType::FileDelete:
-            return true;
-        default:
-            return false;
-    }
-}
-
 std::optional<QString> RuleEngine::trustNoteForEvent(const SecurityEvent& e) const {
-    if (const std::optional<QString> actorNote = matchedUserTrust(e))
-        return actorNote;
-
-    if (!targetIsTrustEligible(e.type))
-        return std::nullopt;
-
-    const QString t = e.target.trimmed();
-    if (t.isEmpty())
-        return std::nullopt;
-    if (t.contains(QLatin1Char('[')))
-        return std::nullopt;
-
-    return userTrustNoteForPath(t);
+    // Execution trust belongs to the actor. Trusting a file does not authorize
+    // unrelated processes to overwrite/delete it, or exempt its loader.
+    return matchedUserTrust(e);
 }
 
 std::optional<QString> RuleEngine::matchedUserTrust(const SecurityEvent& e) const {
@@ -714,24 +693,6 @@ Verdict RuleEngine::evaluateInternal(SecurityEvent& e) {
         return Verdict::forEvent(e, VerdictAction::Allow, VerdictSource::Rule);
     }
 
-    {
-        const TrustDecision sec = TrustPolicy::isTrustedSecurityProduct(e);
-        if (sec.ok) {
-            e.addEvidence(QStringLiteral("TrustPolicy"), EvidenceKind::Trust, sec.reason, 0, false);
-            return Verdict::forEvent(e, VerdictAction::Allow, VerdictSource::TrustedSigner);
-        }
-    }
-
-    if (e.type == EventType::NetworkConnect || e.type == EventType::DnsQuery) {
-        const TrustDecision app = TrustPolicy::isTrustedVendorApp(e);
-        if (app.ok) {
-            e.userTrusted = true;
-            e.addEvidence(QStringLiteral("TrustPolicy"), EvidenceKind::Trust,
-                          app.reason + u("(仅外联/DNS 维度)"), 0, false);
-            return Verdict::forEvent(e, VerdictAction::Allow, VerdictSource::TrustedSigner);
-        }
-    }
-
     deobfuscateCommandLine(e);
     ThreatDetector::analyze(e);
     flagProductTampering(e);
@@ -745,34 +706,44 @@ Verdict RuleEngine::evaluateInternal(SecurityEvent& e) {
     }
 
     if (e.type == EventType::FileWrite || e.type == EventType::FileDelete) {
-        // 签名健康的主体即使触发也按误报抑制:对它只数数量,不去读它动过的文件。
-        const bool trustedActor =
-            e.actorSigned
-            && ((!e.signatureMismatch && !e.certRevoked && !e.signedAfterCertExpiry)
-                || TrustPolicy::isStronglyTrusted(e).ok);
-        const RansomwareBehaviorMonitor::Result rm = ransomware_.observe(e, !trustedActor);
+        // A valid signer does not authorize destructive writes. The content probe
+        // distinguishes legitimate editors/extractors for signed and unsigned actors.
+        const RansomwareBehaviorMonitor::Result rm = ransomware_.observe(e);
+        const auto collective = correlations_.damage(e, rm.confirmedDamagePaths);
+        if (collective.containment && !rm.hardSignal) {
+            e.hasThreatIndicator = true;
+            e.correlationContainmentRequired = true;
+            addMonitorSignal(e, "CrossEventMonitor", collective.score, {collective.reason}, false);
+            return Verdict::forEvent(e, VerdictAction::Ask, VerdictSource::Heuristic);
+        }
         if (rm.score > 0) {
-            addMonitorSignal(e, "RansomwareBehaviorMonitor", rm.score, rm.reasons, false);
-            if (trustedActor) {
-                e.addEvidence(QStringLiteral("RansomwareBehaviorMonitor"), EvidenceKind::Trust,
-                              u("主体签名健康,勒索行为特征按误报抑制(未触蜜罐诱饵)"), 0, false);
-            } else {
-                e.hasThreatIndicator = true;
-                e.ransomwareContainmentRequired = rm.containmentRequired;
-                if (rm.hardSignal || e.riskScore >= ThreatDetector::HighRisk)
-                    return Verdict::forEvent(e, VerdictAction::Block, VerdictSource::Heuristic);
-                e.addEvidence(QStringLiteral("RansomwareBehaviorMonitor"), EvidenceKind::Corroboration,
-                              u("勒索行为达到临时收容阈值:先停止后续破坏,再由用户或策略裁决"), 0, false);
-                return Verdict::forEvent(e, VerdictAction::Ask, VerdictSource::Heuristic);
-            }
+            addMonitorSignal(e, "RansomwareBehaviorMonitor", rm.score, rm.reasons, rm.hardSignal);
+            e.hasThreatIndicator = true;
+            e.ransomwareContainmentRequired = rm.containmentRequired;
+            if (rm.hardSignal || e.riskScore >= ThreatDetector::HighRisk)
+                return Verdict::forEvent(e, VerdictAction::Block, VerdictSource::Heuristic);
+            e.addEvidence(QStringLiteral("RansomwareBehaviorMonitor"), EvidenceKind::Corroboration,
+                          u("勒索行为达到临时收容阈值:先停止后续破坏,再由用户或策略裁决"), 0, false);
+            return Verdict::forEvent(e, VerdictAction::Ask, VerdictSource::Heuristic);
         }
     }
 
-    if (e.type == EventType::NetworkConnect) {
+    const auto correlated = correlations_.observe(e);
+    if (correlated.containment) {
+        e.hasThreatIndicator = true;
+        e.correlationContainmentRequired = true;
+        addMonitorSignal(e, "CrossEventMonitor", correlated.score, {correlated.reason}, false);
+        return Verdict::forEvent(e, VerdictAction::Ask, VerdictSource::Heuristic);
+    }
+
+    const bool trustedNetworkApp =
+        (e.type == EventType::NetworkConnect || e.type == EventType::DnsQuery)
+        && TrustPolicy::isTrustedVendorApp(e).ok;
+    if (e.type == EventType::NetworkConnect && !trustedNetworkApp) {
         const NetworkBehaviorMonitor::Result nr = network_.observe(e);
         addMonitorSignal(e, "BeaconDetector", nr.beacon.score, nr.beacon.reasons, false);
         addMonitorSignal(e, "EgressRateMonitor", nr.fanout.score, nr.fanout.reasons, false);
-    } else if (e.type == EventType::DnsQuery) {
+    } else if (e.type == EventType::DnsQuery && !trustedNetworkApp) {
         const ScoreResult d = DgaDomainAnalyzer::analyze(e.target);
         addMonitorSignal(e, "DgaDomainAnalyzer", d.score, d.reasons, false);
     }
@@ -893,6 +864,21 @@ Verdict RuleEngine::evaluateInternal(SecurityEvent& e) {
                 return Verdict::forEvent(e, VerdictAction::Block, VerdictSource::Heuristic);
             }
             return Verdict::forEvent(e, hit.action, VerdictSource::Rule);
+        }
+    }
+
+    // Automatic identity exemptions run only after explicit rules and behavior
+    // analysis. They must never overrule a deny or a hard indicator.
+    if (!e.hasThreatIndicator && !e.scriptFileHardIndicator) {
+        const TrustDecision sec = TrustPolicy::isTrustedSecurityProduct(e);
+        if (sec.ok) {
+            e.addEvidence(QStringLiteral("TrustPolicy"), EvidenceKind::Trust, sec.reason, 0, false);
+            return Verdict::forEvent(e, VerdictAction::Allow, VerdictSource::TrustedSigner);
+        }
+        if (trustedNetworkApp) {
+            e.addEvidence(QStringLiteral("TrustPolicy"), EvidenceKind::Trust,
+                          u("已核对厂商身份，仅跳过低置信外联时序分析；显式规则已执行"), 0, false);
+            return Verdict::forEvent(e, VerdictAction::Allow, VerdictSource::TrustedSigner);
         }
     }
 

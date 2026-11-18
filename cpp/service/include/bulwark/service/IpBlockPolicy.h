@@ -1,5 +1,6 @@
 #pragma once
 #include <QSet>
+#include "bulwark/engine/NetworkEndpoint.h"
 #include <QString>
 #include <QStringList>
 
@@ -22,8 +23,19 @@ inline bool parseIpv4Octets(const QString& ipv4, int Out[4]) {
 inline bool isUnsafeToBlanketBlockIp(const QString& ip) {
     int b[4] = { 0, 0, 0, 0 };
 
-    if (!parseIpv4Octets(ip, b))
-        return true;
+    const auto endpoint = bulwark::engine::NetworkEndpoint::parse(ip);
+    if (!endpoint) return true;
+    if (endpoint->address.protocol() == QAbstractSocket::IPv6Protocol) {
+        const QHostAddress& a = endpoint->address;
+        if (!endpoint->isPublicUnicast()) return true;
+        // Shared resolvers/CDN frontends retain the same guardrail as IPv4.
+        for (const char* cidr : { "2001:4860::/32", "2606:4700::/32", "2620:fe::/48", "2620:119::/32", "2a04:4e42::/32" }) {
+            const auto range = QHostAddress::parseSubnet(QString::fromLatin1(cidr));
+            if (a.isInSubnet(range)) return true;
+        }
+        return false;
+    }
+    if (!parseIpv4Octets(endpoint->host(), b)) return true;
 
     // 私网 / 环回 / 链路本地 / CGNAT / 组播 / 保留:不可能是「攻击者的 C2 地址」。
     if (b[0] == 10) return true;

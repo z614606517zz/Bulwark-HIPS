@@ -1,4 +1,5 @@
 #include "bulwark/service/DriverEventSource.h"
+#include "bulwark/engine/NetworkEndpoint.h"
 #include "bulwark/service/Logger.h"
 #include "bulwark/service/monitoring/ProcessInspector.h"
 #include "bulwark/service/VolumePathMap.h"
@@ -96,33 +97,6 @@ QString driveAgnostic(const QString& path) {
     return p;
 }
 
-bool parseIpEndpoint(const QString& entry, quint32& ipHostOrder, quint16& port) {
-    ipHostOrder = 0;
-    port = 0;
-    const QString t = entry.trimmed();
-    if (t.isEmpty())
-        return false;
-    const QStringList hp = t.split(QLatin1Char(':'));
-    const QStringList oct = hp.at(0).split(QLatin1Char('.'));
-    if (oct.size() != 4)
-        return false;
-    quint32 v = 0;
-    for (const QString& o : oct) {
-        bool ok = false;
-        const int n = o.toInt(&ok);
-        if (!ok || n < 0 || n > 255)
-            return false;
-        v = (v << 8) | static_cast<quint32>(n);
-    }
-    ipHostOrder = v;
-    if (hp.size() > 1) {
-        bool ok = false;
-        const int p = hp.at(1).toInt(&ok);
-        if (ok && p > 0 && p <= 0xFFFF)
-            port = static_cast<quint16>(p);
-    }
-    return true;
-}
 
 QString resolvePidImagePath(quint32 pid) {
     if (pid == 0)
@@ -152,9 +126,12 @@ bulwark::EventType mapType(ULONG t) {
         case BlwEventRegistryDeleteKeyBlocked:   return bulwark::EventType::RegistryWrite;
         case BlwEventSelfProtect:          return bulwark::EventType::SelfProtect;
         case BlwEventMemoryProtect:        return bulwark::EventType::SelfProtect;
+        case BlwEventNetworkConnect6:
         case BlwEventNetworkConnect:       return bulwark::EventType::NetworkConnect;
         case BlwEventImageLoad:            return bulwark::EventType::ImageLoad;
         case BlwEventImageBlocked:         return bulwark::EventType::ImageLoad;
+        case BlwEventThreadContextAccess:  return bulwark::EventType::ThreadAccess;
+        case BlwEventMappedWrite:          return bulwark::EventType::FileWrite;
         case BlwEventRemoteThread:         return bulwark::EventType::RemoteThread;
         case BlwEventFileModify:           return bulwark::EventType::FileWrite;
         case BlwEventCommandBlocked:       return bulwark::EventType::ProcessCreate;
@@ -544,9 +521,14 @@ void DriverEventSource::Impl::pushInitialConfig() {
 
     sendConfig(BLW_CMD_CLEAR_BLOCKIP);
     for (const QString& s : blockedEndpoints) {
-        quint32 bip = 0; quint16 bport = 0;
-        if (parseIpEndpoint(s, bip, bport))
-            sendConfig(BLW_CMD_ADD_BLOCKIP, QString(), 0, bip, bport);
+        const auto endpoint = bulwark::engine::NetworkEndpoint::parse(s);
+        if (endpoint && endpoint->address.protocol() == QAbstractSocket::IPv6Protocol) {
+            const auto address = endpoint->address.toIPv6Address();
+            const QString hex = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(address.c), 16).toHex());
+            if (!sendConfig(BLW_CMD_ADD_BLOCKIP6, hex, 0, 0, endpoint->port))
+                log.warning(QStringLiteral("IPv6 端点封禁下发失败: %1").arg(endpoint->text()));
+        } else if (endpoint)
+            sendConfig(BLW_CMD_ADD_BLOCKIP, QString(), 0, endpoint->address.toIPv4Address(), endpoint->port);
         else if (!s.trimmed().isEmpty())
             log.warning(QStringLiteral("忽略无法解析的网络黑名单条目:%1").arg(s));
     }
@@ -732,6 +714,24 @@ void DriverEventSource::Impl::buildAndQueue(const BLW_EVENT_MESSAGE& ev, ULONG64
             break;
         }
 
+        case BlwEventMappedWrite:
+            e.actorPath = actorPlaceholder;
+            e.target = targetPath;
+            e.userModeObserved = true;
+            e.detail = QStringLiteral("内核遥测 · 请求建立可共享写入的文件映射；不表示内容已经改变");
+            break;
+
+        case BlwEventThreadContextAccess:
+            e.actorPath = actorPlaceholder;
+            e.parentPid = static_cast<int>(ev.ParentPid);
+            e.target = resolvePidImagePath(ev.ParentPid);
+            if (e.target.isEmpty()) e.target = QStringLiteral("线程目标 PID %1").arg(ev.ParentPid);
+            e.userModeObserved = true;
+            e.memoryInjection = true;
+            e.detail = QStringLiteral("请求跨进程 THREAD_SET_CONTEXT 权限，可能用于 APC 或上下文操作；权限请求不能证明注入已经执行");
+            e.addEvidence(QStringLiteral("ThreadAccess"), bulwark::EvidenceKind::Info, e.detail, 0, false);
+            break;
+
         case BlwEventFileModify:
             e.type = (ev.ParentPid == BlwEventFileDelete)
                 ? bulwark::EventType::FileDelete
@@ -834,7 +834,7 @@ void DriverEventSource::Impl::buildAndQueue(const BLW_EVENT_MESSAGE& ev, ULONG64
             e.target = targetPath;
             e.kernelBlocked = true;
             e.techniques << QStringLiteral("T1555.003") << QStringLiteral("T1005");
-            e.detail = QStringLiteral("内核窃密防护 · 已阻止非指定程序读取浏览器 / 通讯 / 钱包敏感数据"
+            e.detail = QStringLiteral("内核窃密防护 · 已阻止非指定程序读取浏览器 / 通讯 / 钱包 / 开发凭据敏感数据"
                                       "(同一程序 60 秒内只记一次;确属正常可加入信任名单)");
             break;
 
@@ -851,9 +851,12 @@ void DriverEventSource::Impl::buildAndQueue(const BLW_EVENT_MESSAGE& ev, ULONG64
             break;
         }
 
+        case BlwEventNetworkConnect6:
         case BlwEventNetworkConnect: {
             e.actorPath = actorPlaceholder;
-            e.target = QStringLiteral("%1:%2").arg(formatIpv4Host(ev.RemoteIpV4)).arg(ev.RemotePort);
+            const auto v6 = bulwark::engine::NetworkEndpoint::parse(targetRaw);
+            e.target = ev.Type == BlwEventNetworkConnect6 && v6 ? v6->text()
+                : QStringLiteral("%1:%2").arg(formatIpv4Host(ev.RemoteIpV4)).arg(ev.RemotePort);
             e.kernelBlocked = true;
             e.detail = QStringLiteral("内核拦截 · 已阻断对黑名单地址的外联");
             break;
@@ -1242,10 +1245,14 @@ void DriverEventSource::addProtectedPid(int pid) {
 }
 
 void DriverEventSource::addBlockedIp(const QString& ip, quint16 port) {
-    quint32 ipHost = 0; quint16 p = 0;
-    const QString entry = port > 0 ? QStringLiteral("%1:%2").arg(ip).arg(port) : ip;
-    if (parseIpEndpoint(entry, ipHost, p))
-        d_->sendConfig(BLW_CMD_ADD_BLOCKIP, QString(), 0, ipHost, p);
+    auto endpoint = bulwark::engine::NetworkEndpoint::parse(ip);
+    if (!endpoint) return;
+    endpoint->port = port;
+    if (endpoint->address.protocol() == QAbstractSocket::IPv6Protocol) {
+        const auto bytes = endpoint->address.toIPv6Address();
+        const QString hex = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(bytes.c), 16).toHex());
+        d_->sendConfig(BLW_CMD_ADD_BLOCKIP6, hex, 0, 0, port);
+    } else d_->sendConfig(BLW_CMD_ADD_BLOCKIP, QString(), 0, endpoint->address.toIPv4Address(), port);
 }
 
 bool DriverEventSource::Impl::kernelReadFile(const QString& path, QByteArray& out) {

@@ -2,6 +2,7 @@
 #include "bulwark/service/IpBlockPolicy.h"
 
 #include <QDateTime>
+#include <algorithm>
 #include <QDir>
 #include <QFile>
 #include <QMutexLocker>
@@ -20,14 +21,6 @@ QString nowIso() {
     return QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
 }
 
-bool ipv4ToHostOrder(const QString& ip, quint32& out) {
-    int b[4] = { 0, 0, 0, 0 };
-    if (!parseIpv4Octets(ip, b))
-        return false;
-    out = (static_cast<quint32>(b[0]) << 24) | (static_cast<quint32>(b[1]) << 16) |
-          (static_cast<quint32>(b[2]) << 8) | static_cast<quint32>(b[3]);
-    return true;
-}
 
 }
 
@@ -59,8 +52,10 @@ void UserModeNetworkBlock::removeLegacyManifest() const {
 }
 
 QString UserModeNetworkBlock::keyOf(const QString& ip, quint16 port) {
-    return port > 0 ? QStringLiteral("%1:%2").arg(ip.trimmed().toLower()).arg(port)
-                    : ip.trimmed().toLower();
+    auto endpoint = bulwark::engine::NetworkEndpoint::parse(ip);
+    if (!endpoint) return {};
+    if (port) endpoint->port = port;
+    return endpoint->text();
 }
 
 bool UserModeNetworkBlock::isOpen() const {
@@ -95,17 +90,28 @@ bool UserModeNetworkBlock::addFilterLocked(Entry& e) {
     if (!engine_)
         return false;
 
-    quint32 addrHost = 0;
-    if (!ipv4ToHostOrder(e.ip, addrHost))
-        return false;
+    const auto endpoint = bulwark::engine::NetworkEndpoint::parse(e.ip);
+    if (!endpoint) return false;
+    const bool ipv6 = endpoint->address.protocol() == QAbstractSocket::IPv6Protocol;
+    FWP_V6_ADDR_AND_MASK v6{};
+    if (ipv6) {
+        const auto bytes = endpoint->address.toIPv6Address();
+        std::copy(bytes.c, bytes.c + 16, v6.addr);
+        v6.prefixLength = 128;
+    }
 
     FWPM_FILTER_CONDITION0 conds[2]{};
     UINT32 nConds = 0;
 
     conds[nConds].fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
     conds[nConds].matchType = FWP_MATCH_EQUAL;
-    conds[nConds].conditionValue.type = FWP_UINT32;
-    conds[nConds].conditionValue.uint32 = addrHost;
+    if (ipv6) {
+        conds[nConds].conditionValue.type = FWP_V6_ADDR_MASK;
+        conds[nConds].conditionValue.v6AddrMask = &v6;
+    } else {
+        conds[nConds].conditionValue.type = FWP_UINT32;
+        conds[nConds].conditionValue.uint32 = endpoint->address.toIPv4Address();
+    }
     ++nConds;
 
     if (e.port > 0) {
@@ -121,7 +127,7 @@ bool UserModeNetworkBlock::addFilterLocked(Entry& e) {
 
     FWPM_FILTER0 filter{};
     filter.displayData.name = const_cast<wchar_t*>(wname.c_str());
-    filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V4;
+    filter.layerKey = ipv6 ? FWPM_LAYER_ALE_AUTH_CONNECT_V6 : FWPM_LAYER_ALE_AUTH_CONNECT_V4;
     filter.subLayerKey = FWPM_SUBLAYER_UNIVERSAL;
     filter.action.type = FWP_ACTION_BLOCK;
     filter.weight.type = FWP_EMPTY;
@@ -156,13 +162,18 @@ bool UserModeNetworkBlock::deleteFilterLocked(Entry& e) {
 }
 
 bool UserModeNetworkBlock::blockIp(const QString& ip, quint16 port) {
-    const QString addr = ip.trimmed();
+    const auto parsed = bulwark::engine::NetworkEndpoint::parse(ip);
+    if (parsed && parsed->port) {
+        if (port && port != parsed->port) return false;
+        port = parsed->port;
+    }
+    const QString addr = parsed ? parsed->host() : QString();
     if (addr.isEmpty())
         return false;
 
     if (isUnsafeToBlanketBlockIp(addr)) {
         log_.warning(QStringLiteral("用户态网络封禁已拒绝(该地址不可整段封禁:私网/环回/公共解析器/"
-                                    "共享 CDN 前端,或非 IPv4):%1")
+                                    "共享 CDN 前端,或无效 IP):%1")
                          .arg(addr));
         return false;
     }

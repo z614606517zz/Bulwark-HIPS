@@ -12,6 +12,8 @@ void guardKey(Segment& s, const char* what, const char* keyPattern, bool blockUn
     const QString label = u(what);
     s.reg(blockUnsigned ? Block : Ask, label + u("(未签名写入者)"))
         .target(keyPattern).unsignedOnly().onlySetValue();
+    s.reg(Ask, label + u("(已签名写入者，仍需核对持久化操作)"))
+        .target(keyPattern).signedOnly().onlySetValue().exemptOs().disableSignedAutoAllow();
     for (const QString& w : writers)
         s.reg(Ask, label + u("(经 ") + imageNameOf(w) + u(")"))
             .actor(w).target(keyPattern).onlySetValue().disableSignedAutoAllow();
@@ -181,8 +183,14 @@ void scheduledTasksAndServices(Segment& s) {
     }
 
     // 监控代理走 WMI API 建订阅,命令行里出现消费者类型基本就是持久化后门。
-    for (const char* p : { "*commandlineeventconsumer*", "*activescripteventconsumer*" })
-        s.proc(Block, "创建 WMI 事件消费者(T1546.003)").cmd(p).hard();
+    for (const char* consumer : { "commandlineeventconsumer", "activescripteventconsumer" })
+        for (const char* mutation : { "new-ciminstance", "set-ciminstance", "set-wmiinstance",
+                                      ".put(", ".put_(", ".createinstance(" }) {
+            s.proc(Block, "创建 WMI 事件消费者(T1546.003)")
+                .cmd(u("*") + u(mutation) + u("*") + u(consumer) + u("*")).hard();
+            s.proc(Block, "创建 WMI 事件消费者(T1546.003)")
+                .cmd(u("*") + u(consumer) + u("*") + u(mutation) + u("*")).hard();
+        }
     s.proc(Ask, "创建 WMI 事件过滤器绑定(T1546.003)").cmd("*__filtertoconsumerbinding*").disableSignedAutoAllow();
     for (const QString& d : rareExecutionDirs())
         s.proc(Block, "编译罕见目录中的 MOF(T1546.003)").actor("*\\mofcomp.exe").cmd(any(d)).hard();
@@ -190,7 +198,9 @@ void scheduledTasksAndServices(Segment& s) {
     s.proc(Block, "BITS 任务完成后执行命令(T1197)").cmd("*bitsadmin*setnotifycmdline*").hard();
 
     // at 早已废弃,正常软件不再用它建任务。
-    s.proc(Block, "用已废弃的 at 命令创建计划任务(T1053.002)").actor("*\\at.exe").cmd("*:*").hard();
+    for (const char* time : { "* *?:??*", "* *??:??*" })
+        s.proc(Block, "用已废弃的 at 命令创建计划任务(T1053.002)")
+            .actor("*\\at.exe").cmd(time).hard();
     s.proc(Ask, "设置服务故障恢复命令(服务一崩溃就执行,T1543.003)").cmd("*sc*failure*command=*").disableSignedAutoAllow();
     for (const char* p : { "*appdomainmanager*", "*appdomain_manager_*", "*setx*cor_profiler*", "*setx*cor_enable_profiling*" })
         s.proc(Ask, ".NET 启动劫持(AppDomainManager / COR_PROFILER,T1574.012/T1574.014)").cmd(p).disableSignedAutoAllow();
@@ -279,6 +289,8 @@ void startupFiles(Segment& s) {
 
 void addPersistenceRules(QVector<DefenseRule>& out) {
     Segment s(out, "持久化");
+    s.add(EventType::WmiSubscription, Ask, u("注册 WMI 永久事件订阅(API 变更遥测,T1546.003)"))
+        .disableSignedAutoAllow().disableDevToolAutoAllow();
     registryAutostart(s);
     scheduledTasksAndServices(s);
     accountsAndEnvironment(s);

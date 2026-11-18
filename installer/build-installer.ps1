@@ -35,7 +35,7 @@ try {
     Pop-Location
 }
 
-$setup = Join-Path $installerDir 'Bulwark-Setup-1.0.9.exe'
+$setup = Join-Path $installerDir 'Bulwark-Setup-1.0.exe'
 if (-not (Test-Path -LiteralPath $setup)) { throw "installer was not generated: $setup" }
 if ($UnsignedForTesting) {
     Write-Warning 'Generated an unsigned test installer. Never publish this artifact.'

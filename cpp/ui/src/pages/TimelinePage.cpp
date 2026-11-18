@@ -396,7 +396,7 @@ QWidget* pages::timeline(IpcClient* ipc)
     seg->setAccent(SegAsk, theme::warning());
     FilterChip* typeChip = page->addChip(u("类型"));
     typeChip->addOption(u("全部"));
-    for (int i = 0; i <= int(bulwark::EventType::ScriptScan); ++i)
+    for (int i = 0; i <= int(bulwark::EventType::RemoteShareAccess); ++i)
         typeChip->addOption(evtfmt::typeShort(bulwark::EventType(i)), i);
     FilterChip* riskChip = page->addChip(u("风险"));
     riskChip->addOption(u("全部"), 0);

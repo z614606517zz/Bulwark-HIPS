@@ -11,24 +11,28 @@ using bulwark::VerdictAction;
 struct EtwOptions {
     bool Enabled = true;
     bool DnsClient = true;
+    bool WmiActivity = true;
     bool KernelNetwork = true;
     bool KernelRegistry = true;
     bool KernelFile = true;
     bool KernelFileWriteAttribution = true;
+    bool DeveloperCredentialReads = true;
     int AttributionPathMax = 256;
     bool KernelImageLoad = true;
     bool KernelRemoteThread = true;
     // Microsoft-Windows-Kernel-Audit-API-Calls 的 TerminateProcess:「结束进程」类规则唯一的事件来源。
     bool KernelAuditApi = true;
     int PerProcessKillPerMinute = 120;
-    bool NetworkUntrustedOnly = true;
+    // Legacy noise controls are retained for configuration compatibility. Event
+    // collection must not discard signed actors or non-DGA domains before rules.
+    bool NetworkUntrustedOnly = false;
     int PerProcessNetPerMinute = 600;
     int PerProcessRegPerMinute = 240;
     int PerProcessFilePerMinute = 240;
     int PerProcessImagePerMinute = 120;
     int PerProcessThreadPerMinute = 60;
     int RemoteThreadMinTargetAgeMs = 500;
-    bool SuspiciousOnly = true;
+    bool SuspiciousOnly = false;
     QString SessionName = QStringLiteral("Bulwark-ETW");
     int RawChannelCapacity = 8192;
     int PerProcessDnsPerMinute = 120;
@@ -85,6 +89,9 @@ struct BulwarkOptions {
     QStringList AbusedSignerPublishers;
 
     bool SelfProtectionAlertEnabled = true;
+    bool SmbAuditEnabled = true;
+    bool BitLockerAuditEnabled = true;
+    bool WmiRepositoryWatchEnabled = true;
 
     bool InstallDirAclSelfCheckEnabled = true;
 

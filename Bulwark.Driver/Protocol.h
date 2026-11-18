@@ -40,6 +40,9 @@ typedef enum _BLW_EVENT_TYPE {
     // 窃密防护:非指定程序打开浏览器 / 通讯 / 钱包等敏感数据,已拒绝。ImagePath 为主体映像,
     // TargetPath 为被打开的文件。同一主体 60 秒内只报一次。
     BlwEventSensitiveReadBlocked = 29,
+    BlwEventNetworkConnect6 = 30,
+    BlwEventThreadContextAccess = 31,
+    BlwEventMappedWrite = 32,
 } BLW_EVENT_TYPE;
 
 // 进程创建事件的 RemotePort 位:新进程映像文件在创建那一刻的异常。
@@ -147,6 +150,7 @@ typedef struct _BLW_VERDICT_REPLY {
 #define BLW_CMD_CLEAR_READGUARD_READER 62
 #define BLW_CMD_ADD_READGUARD_READER   63
 #define BLW_CMD_DEL_READGUARD_READER   64
+#define BLW_CMD_ADD_BLOCKIP6           65 // Path contains 32 hexadecimal digits, BlockPort is host order
 
 #define BLW_READGUARD_SEP         L'|'
 #define BLW_READGUARD_READER_SEP  L';'
@@ -155,7 +159,7 @@ typedef struct _BLW_VERDICT_REPLY {
 
 // 协议版本。握手结构体、事件号或命令号有增改时必须升版本:新旧混跑会在握手时被两侧的长度或版本校验拦下,
 // 降级为不拦截,避免旧服务把不认识的事件号当成别的事件处理。
-#define BLW_PROTOCOL_VERSION   13
+#define BLW_PROTOCOL_VERSION   14
 
 // 内核能力位图(BLW_HANDSHAKE_REPLY.Capabilities):驱动在握手时直接声明编译进了哪些能力。
 // 不能用「下发命令是否成功」反推能力:驱动会正当拒绝非法参数,各命令对非法参数的处理也不统一。
@@ -172,7 +176,8 @@ typedef struct _BLW_VERDICT_REPLY {
 
 // 本驱动实际实现的能力集合(编译期常量),新增能力时在此补一位。
 // 语义是「已编译进驱动」,不保证运行时初始化成功;运行期失败(如 WFP 未就绪)另有日志与状态提示。
-#define BLW_CAP_CURRENT  (BLW_CAP_CMD_HARDBLOCK | BLW_CAP_BANNED |      \
+#define BLW_CAP_IPV6_ENDPOINTS 0x00000400UL
+#define BLW_CAP_CURRENT  (BLW_CAP_IPV6_ENDPOINTS | BLW_CAP_CMD_HARDBLOCK | BLW_CAP_BANNED |      \
                           BLW_CAP_SELFGUARD     | BLW_CAP_EXECBLOCK |   \
                           BLW_CAP_CRED_PROTECT  | BLW_CAP_MEM_PROTECT | \
                           BLW_CAP_FILE_TELEMETRY| BLW_CAP_GUARD_DIR |   \

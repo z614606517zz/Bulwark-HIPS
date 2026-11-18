@@ -136,7 +136,7 @@
                 "action": "Allow",
                 "evidence": [
                     {
-                        "description": "软件信任库:微信 / 企业微信(腾讯)·签名健康,时序检测前放行(仅外联/DNS 维度)",
+                        "description": "已核对厂商身份，仅跳过低置信外联时序分析；显式规则已执行",
                         "kind": "Trust",
                         "scoreDelta": 0,
                         "source": "TrustPolicy"
@@ -157,7 +157,7 @@
                 "source": "TrustedSigner",
                 "techniques": [
                 ],
-                "userTrusted": true
+                "userTrusted": false
             }
         },
         {
@@ -1398,7 +1398,7 @@
                 "action": "Allow",
                 "evidence": [
                     {
-                        "description": "微软签名且位于系统目录",
+                        "description": "强可信系统组件(微软签名且位于系统目录),敏感操作豁免",
                         "kind": "Trust",
                         "scoreDelta": 0,
                         "source": "TrustPolicy"
@@ -1414,7 +1414,7 @@
                 "matchedRuleNote": "",
                 "memoryInjection": false,
                 "riskReasons": [
-                    "微软签名且位于系统目录"
+                    "强可信系统组件(微软签名且位于系统目录),敏感操作豁免"
                 ],
                 "riskScore": 0,
                 "source": "TrustedSigner",
@@ -3064,7 +3064,7 @@
                     },
                     {
                         "description": "1 分钟内产出 3 个已知勒索扩展名文件(T1486)",
-                        "kind": "SoftSignal",
+                        "kind": "HardIndicator",
                         "scoreDelta": 60,
                         "source": "RansomwareBehaviorMonitor"
                     },
@@ -3104,7 +3104,7 @@
                     },
                     {
                         "description": "已判定为勒索行为的进程继续改写 / 删除用户文件(T1486)",
-                        "kind": "SoftSignal",
+                        "kind": "HardIndicator",
                         "scoreDelta": 60,
                         "source": "RansomwareBehaviorMonitor"
                     },
@@ -3281,30 +3281,30 @@
         {
             "label": "fp-ifeo-debugger-write",
             "snapshot": {
-                "action": "Allow",
+                "action": "Ask",
                 "evidence": [
                     {
-                        "description": "有效数字签名:Microsoft Corporation(健康),直接放行",
-                        "kind": "Trust",
+                        "description": "命中规则:[内置] 持久化 · 设置映像劫持调试器(T1546.012)(已签名写入者，仍需核对持久化操作)",
+                        "kind": "Rule",
                         "scoreDelta": 0,
-                        "source": "TrustPolicy"
+                        "source": "RuleEngine"
                     },
                     {
-                        "description": "最终裁决:放行(依据:可信放行;风险分 0)",
+                        "description": "最终裁决:询问用户(依据:命中规则;风险分 0)",
                         "kind": "Decision",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
                     }
                 ],
                 "hasThreatIndicator": false,
-                "matchedRuleNote": "",
+                "matchedRuleNote": "[内置] 持久化 · 设置映像劫持调试器(T1546.012)(已签名写入者，仍需核对持久化操作)",
                 "memoryInjection": false,
                 "riskReasons": [
-                    "有效数字签名:Microsoft Corporation(健康),直接放行"
                 ],
                 "riskScore": 0,
-                "source": "TrustedSigner",
+                "source": "Rule",
                 "techniques": [
+                    "T1546.012 映像劫持(IFEO Debugger)"
                 ],
                 "userTrusted": false
             }
@@ -4489,7 +4489,7 @@
                 "action": "Allow",
                 "evidence": [
                     {
-                        "description": "软件信任库:火绒安全(火绒)·签名健康,时序检测前放行(仅外联/DNS 维度)",
+                        "description": "已核对厂商身份，仅跳过低置信外联时序分析；显式规则已执行",
                         "kind": "Trust",
                         "scoreDelta": 0,
                         "source": "TrustPolicy"
@@ -4510,7 +4510,7 @@
                 "source": "TrustedSigner",
                 "techniques": [
                 ],
-                "userTrusted": true
+                "userTrusted": false
             }
         },
         {
@@ -4855,30 +4855,30 @@
         {
             "label": "fp-sync-client-icon-overlay-register",
             "snapshot": {
-                "action": "Allow",
+                "action": "Ask",
                 "evidence": [
                     {
-                        "description": "有效数字签名:Dropbox, Inc.(健康),直接放行",
-                        "kind": "Trust",
+                        "description": "命中规则:[内置] 持久化 · 注册图标覆盖处理程序(T1546.015)(已签名写入者，仍需核对持久化操作)",
+                        "kind": "Rule",
                         "scoreDelta": 0,
-                        "source": "TrustPolicy"
+                        "source": "RuleEngine"
                     },
                     {
-                        "description": "最终裁决:放行(依据:可信放行;风险分 0)",
+                        "description": "最终裁决:询问用户(依据:命中规则;风险分 0)",
                         "kind": "Decision",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
                     }
                 ],
                 "hasThreatIndicator": false,
-                "matchedRuleNote": "",
+                "matchedRuleNote": "[内置] 持久化 · 注册图标覆盖处理程序(T1546.015)(已签名写入者，仍需核对持久化操作)",
                 "memoryInjection": false,
                 "riskReasons": [
-                    "有效数字签名:Dropbox, Inc.(健康),直接放行"
                 ],
                 "riskScore": 0,
-                "source": "TrustedSigner",
+                "source": "Rule",
                 "techniques": [
+                    "T1546.015"
                 ],
                 "userTrusted": false
             }
@@ -4917,30 +4917,30 @@
         {
             "label": "fp-installer-writes-runonceex",
             "snapshot": {
-                "action": "Allow",
+                "action": "Ask",
                 "evidence": [
                     {
-                        "description": "有效数字签名:Realtek Semiconductor Corp.(健康),直接放行",
-                        "kind": "Trust",
+                        "description": "命中规则:[内置] 持久化 · 写入开机自启动项 RunOnceEx(T1547.001)(已签名写入者，仍需核对持久化操作)",
+                        "kind": "Rule",
                         "scoreDelta": 0,
-                        "source": "TrustPolicy"
+                        "source": "RuleEngine"
                     },
                     {
-                        "description": "最终裁决:放行(依据:可信放行;风险分 0)",
+                        "description": "最终裁决:询问用户(依据:命中规则;风险分 0)",
                         "kind": "Decision",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
                     }
                 ],
                 "hasThreatIndicator": false,
-                "matchedRuleNote": "",
+                "matchedRuleNote": "[内置] 持久化 · 写入开机自启动项 RunOnceEx(T1547.001)(已签名写入者，仍需核对持久化操作)",
                 "memoryInjection": false,
                 "riskReasons": [
-                    "有效数字签名:Realtek Semiconductor Corp.(健康),直接放行"
                 ],
                 "riskScore": 0,
-                "source": "TrustedSigner",
+                "source": "Rule",
                 "techniques": [
+                    "T1547.001 注册表 Run 键/启动文件夹"
                 ],
                 "userTrusted": false
             }
@@ -6783,30 +6783,30 @@
         {
             "label": "pos-onedrive-run-entry",
             "snapshot": {
-                "action": "Allow",
+                "action": "Ask",
                 "evidence": [
                     {
-                        "description": "有效数字签名:Microsoft Corporation(健康),直接放行",
-                        "kind": "Trust",
+                        "description": "命中规则:[内置] 持久化 · 写入开机自启动项 Run(T1547.001)(已签名写入者，仍需核对持久化操作)",
+                        "kind": "Rule",
                         "scoreDelta": 0,
-                        "source": "TrustPolicy"
+                        "source": "RuleEngine"
                     },
                     {
-                        "description": "最终裁决:放行(依据:可信放行;风险分 0)",
+                        "description": "最终裁决:询问用户(依据:命中规则;风险分 0)",
                         "kind": "Decision",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
                     }
                 ],
                 "hasThreatIndicator": false,
-                "matchedRuleNote": "",
+                "matchedRuleNote": "[内置] 持久化 · 写入开机自启动项 Run(T1547.001)(已签名写入者，仍需核对持久化操作)",
                 "memoryInjection": false,
                 "riskReasons": [
-                    "有效数字签名:Microsoft Corporation(健康),直接放行"
                 ],
                 "riskScore": 0,
-                "source": "TrustedSigner",
+                "source": "Rule",
                 "techniques": [
+                    "T1547.001 注册表 Run 键/启动文件夹"
                 ],
                 "userTrusted": false
             }
@@ -8597,7 +8597,7 @@
                         "source": "DefenseEvasionAnalyzer"
                     },
                     {
-                        "description": "命中规则:[内置] 防御规避 · 改写文件时间戳为指定日期(Timestomp,T1070.006)",
+                        "description": "命中规则:[内置] 防御规避 · 改写程序 / 系统文件的时间戳为指定日期(Timestomp,T1070.006)",
                         "kind": "Rule",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
@@ -8610,7 +8610,7 @@
                     }
                 ],
                 "hasThreatIndicator": false,
-                "matchedRuleNote": "[内置] 防御规避 · 改写文件时间戳为指定日期(Timestomp,T1070.006)",
+                "matchedRuleNote": "[内置] 防御规避 · 改写程序 / 系统文件的时间戳为指定日期(Timestomp,T1070.006)",
                 "memoryInjection": false,
                 "riskReasons": [
                     "改写文件时间戳(T1070.006)"
@@ -8635,7 +8635,7 @@
                         "source": "DefenseEvasionAnalyzer"
                     },
                     {
-                        "description": "命中规则:[内置] 防御规避 · 改写文件时间戳为指定日期(Timestomp,T1070.006)",
+                        "description": "命中规则:[内置] 防御规避 · 改写程序 / 系统文件的时间戳为指定日期(Timestomp,T1070.006)",
                         "kind": "Rule",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
@@ -8648,7 +8648,7 @@
                     }
                 ],
                 "hasThreatIndicator": false,
-                "matchedRuleNote": "[内置] 防御规避 · 改写文件时间戳为指定日期(Timestomp,T1070.006)",
+                "matchedRuleNote": "[内置] 防御规避 · 改写程序 / 系统文件的时间戳为指定日期(Timestomp,T1070.006)",
                 "memoryInjection": false,
                 "riskReasons": [
                     "改写文件时间戳(T1070.006)"
@@ -8763,7 +8763,7 @@
         {
             "label": "det-token-sedebugprivilege",
             "snapshot": {
-                "action": "Block",
+                "action": "Allow",
                 "evidence": [
                     {
                         "description": "未签名程序从临时 / 公共目录运行(T1204.002)",
@@ -8778,27 +8778,21 @@
                         "source": "DefenseEvasionAnalyzer"
                     },
                     {
-                        "description": "命中规则:[内置] 提权 · 未签名程序复制 / 模拟进程令牌或启用调试特权(T1134)",
-                        "kind": "Rule",
-                        "scoreDelta": 0,
-                        "source": "RuleEngine"
-                    },
-                    {
-                        "description": "最终裁决:阻止(依据:命中规则;风险分 50)",
+                        "description": "最终裁决:放行(依据:默认策略;风险分 50)",
                         "kind": "Decision",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
                     }
                 ],
                 "hasThreatIndicator": false,
-                "matchedRuleNote": "[内置] 提权 · 未签名程序复制 / 模拟进程令牌或启用调试特权(T1134)",
+                "matchedRuleNote": "",
                 "memoryInjection": false,
                 "riskReasons": [
                     "未签名程序从临时 / 公共目录运行(T1204.002)",
                     "操纵进程令牌(复制 / 模拟令牌、启用调试特权,T1134)"
                 ],
                 "riskScore": 50,
-                "source": "Rule",
+                "source": "DefaultPolicy",
                 "techniques": [
                     "T1204.002 用户执行",
                     "T1134"
@@ -9862,29 +9856,30 @@
         {
             "label": "fp-msi-afterburner-rtcore64-program-files",
             "snapshot": {
-                "action": "Allow",
+                "action": "Ask",
                 "evidence": [
                     {
-                        "description": "命中规则:[内置] 注入与驱动 · Program Files 下签名健康的厂商驱动 rtcore64.sys",
+                        "description": "命中规则:[内置] 注入与驱动 · 加载已知可被利用的驱动 rtcore64.sys(BYOVD,T1068)",
                         "kind": "Rule",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
                     },
                     {
-                        "description": "最终裁决:放行(依据:命中规则;风险分 0)",
+                        "description": "最终裁决:询问用户(依据:命中规则;风险分 0)",
                         "kind": "Decision",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
                     }
                 ],
                 "hasThreatIndicator": false,
-                "matchedRuleNote": "[内置] 注入与驱动 · Program Files 下签名健康的厂商驱动 rtcore64.sys",
+                "matchedRuleNote": "[内置] 注入与驱动 · 加载已知可被利用的驱动 rtcore64.sys(BYOVD,T1068)",
                 "memoryInjection": false,
                 "riskReasons": [
                 ],
                 "riskScore": 0,
                 "source": "Rule",
                 "techniques": [
+                    "T1068"
                 ],
                 "userTrusted": false
             }
@@ -10263,7 +10258,7 @@
                         "source": "DefenseEvasionAnalyzer"
                     },
                     {
-                        "description": "命中规则:[内置] 防御规避 · 经 [IO.File]::Set*Time 把时间戳改成指定日期(Timestomp,T1070.006)",
+                        "description": "命中规则:[内置] 防御规避 · 经 [IO.File]::Set*Time 改写程序 / 系统文件的时间戳(Timestomp,T1070.006)",
                         "kind": "Rule",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
@@ -10276,7 +10271,7 @@
                     }
                 ],
                 "hasThreatIndicator": false,
-                "matchedRuleNote": "[内置] 防御规避 · 经 [IO.File]::Set*Time 把时间戳改成指定日期(Timestomp,T1070.006)",
+                "matchedRuleNote": "[内置] 防御规避 · 经 [IO.File]::Set*Time 改写程序 / 系统文件的时间戳(Timestomp,T1070.006)",
                 "memoryInjection": false,
                 "riskReasons": [
                     "改写文件时间戳(T1070.006)"
@@ -11581,7 +11576,7 @@
                     },
                     {
                         "description": "1 分钟内在 3 个目录写入勒索说明文件(T1486)",
-                        "kind": "SoftSignal",
+                        "kind": "HardIndicator",
                         "scoreDelta": 60,
                         "source": "RansomwareBehaviorMonitor"
                     },
@@ -11995,7 +11990,7 @@
         {
             "label": "det-ps-timestomp-datetime-cast",
             "snapshot": {
-                "action": "Block",
+                "action": "Ask",
                 "evidence": [
                     {
                         "description": "改写文件时间戳(T1070.006)",
@@ -12010,7 +12005,7 @@
                         "source": "RuleEngine"
                     },
                     {
-                        "description": "最终裁决:阻止(依据:命中规则;风险分 15)",
+                        "description": "最终裁决:询问用户(依据:命中规则;风险分 15)",
                         "kind": "Decision",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
@@ -12369,7 +12364,7 @@
                 "action": "Ask",
                 "evidence": [
                     {
-                        "description": "命中规则:[内置] 远控与隧道 · 命令行连接矿池(T1496)",
+                        "description": "命中规则:[内置] 远控与隧道 · 运行挖矿程序 xmrig(T1496)",
                         "kind": "Rule",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
@@ -12382,7 +12377,7 @@
                     }
                 ],
                 "hasThreatIndicator": false,
-                "matchedRuleNote": "[内置] 远控与隧道 · 命令行连接矿池(T1496)",
+                "matchedRuleNote": "[内置] 远控与隧道 · 运行挖矿程序 xmrig(T1496)",
                 "memoryInjection": false,
                 "riskReasons": [
                 ],
@@ -12493,7 +12488,7 @@
                 "action": "Allow",
                 "evidence": [
                     {
-                        "description": "软件信任库:Telegram(Telegram)·签名健康,时序检测前放行(仅外联/DNS 维度)",
+                        "description": "已核对厂商身份，仅跳过低置信外联时序分析；显式规则已执行",
                         "kind": "Trust",
                         "scoreDelta": 0,
                         "source": "TrustPolicy"
@@ -12514,7 +12509,7 @@
                 "source": "TrustedSigner",
                 "techniques": [
                 ],
-                "userTrusted": true
+                "userTrusted": false
             }
         },
         {
@@ -13754,7 +13749,7 @@
         {
             "label": "det-rat-family-drop",
             "snapshot": {
-                "action": "Block",
+                "action": "Ask",
                 "evidence": [
                     {
                         "description": "未签名程序从临时 / 公共目录运行(T1204.002)",
@@ -13769,20 +13764,20 @@
                         "source": "DownloaderBehaviorMonitor"
                     },
                     {
-                        "description": "命中规则:[内置] 远控与隧道 · 投放远控木马 / 勒索家族载荷 asyncrat(执行前置,T1588.001)",
+                        "description": "命中规则:[内置] 远控与隧道 · 投放疑似远控木马 / 勒索家族载荷 asyncrat(执行前置,T1588.001)",
                         "kind": "Rule",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
                     },
                     {
-                        "description": "最终裁决:阻止(依据:命中规则;风险分 40)",
+                        "description": "最终裁决:询问用户(依据:命中规则;风险分 40)",
                         "kind": "Decision",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
                     }
                 ],
                 "hasThreatIndicator": false,
-                "matchedRuleNote": "[内置] 远控与隧道 · 投放远控木马 / 勒索家族载荷 asyncrat(执行前置,T1588.001)",
+                "matchedRuleNote": "[内置] 远控与隧道 · 投放疑似远控木马 / 勒索家族载荷 asyncrat(执行前置,T1588.001)",
                 "memoryInjection": false,
                 "riskReasons": [
                     "未签名程序从临时 / 公共目录运行(T1204.002)",
@@ -14070,30 +14065,30 @@
         {
             "label": "fp-shell-ext-approved-regsvr32",
             "snapshot": {
-                "action": "Allow",
+                "action": "Ask",
                 "evidence": [
                     {
-                        "description": "微软签名且位于系统目录",
-                        "kind": "Trust",
+                        "description": "命中规则:[内置] 持久化 · 注册已批准的 Shell 扩展(资源管理器加载,T1546)(已签名写入者，仍需核对持久化操作)",
+                        "kind": "Rule",
                         "scoreDelta": 0,
-                        "source": "TrustPolicy"
+                        "source": "RuleEngine"
                     },
                     {
-                        "description": "最终裁决:放行(依据:可信放行;风险分 0)",
+                        "description": "最终裁决:询问用户(依据:命中规则;风险分 0)",
                         "kind": "Decision",
                         "scoreDelta": 0,
                         "source": "RuleEngine"
                     }
                 ],
                 "hasThreatIndicator": false,
-                "matchedRuleNote": "",
+                "matchedRuleNote": "[内置] 持久化 · 注册已批准的 Shell 扩展(资源管理器加载,T1546)(已签名写入者，仍需核对持久化操作)",
                 "memoryInjection": false,
                 "riskReasons": [
-                    "微软签名且位于系统目录"
                 ],
                 "riskScore": 0,
-                "source": "TrustedSigner",
+                "source": "Rule",
                 "techniques": [
+                    "T1546"
                 ],
                 "userTrusted": false
             }
@@ -16276,7 +16271,7 @@
                 "action": "Allow",
                 "evidence": [
                     {
-                        "description": "软件信任库:Microsoft Edge(Microsoft)·签名健康,时序检测前放行(仅外联/DNS 维度)",
+                        "description": "已核对厂商身份，仅跳过低置信外联时序分析；显式规则已执行",
                         "kind": "Trust",
                         "scoreDelta": 0,
                         "source": "TrustPolicy"
@@ -16297,7 +16292,7 @@
                 "source": "TrustedSigner",
                 "techniques": [
                 ],
-                "userTrusted": true
+                "userTrusted": false
             }
         },
         {

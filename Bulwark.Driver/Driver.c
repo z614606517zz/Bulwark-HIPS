@@ -193,6 +193,7 @@ CONST FLT_OPERATION_REGISTRATION g_Callbacks[] = {
     { IRP_MJ_CREATE,          0, BlwPreCreate,         BlwPostCreate },
     { IRP_MJ_SET_INFORMATION, 0, BlwPreSetInformation, NULL },
     { IRP_MJ_WRITE,           0, BlwPreWrite,          NULL },
+    { IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION, 0, BlwPreAcquireSection, NULL },
     { IRP_MJ_OPERATION_END }
 };
 

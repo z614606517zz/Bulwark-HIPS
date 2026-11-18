@@ -15,6 +15,11 @@ enum class EventType {
     SelfProtect,
     DnsQuery,
     ScriptScan,
+    WmiSubscription,
+    FileRead,
+    ThreadAccess,
+    DiskProtectionChange,
+    RemoteShareAccess,
 };
 
 // 注册表操作方向。内核 BlwEventRegistrySetValue/DeleteValue/DeleteKey 三者在用户态
@@ -142,6 +147,11 @@ inline QString eventTypeToString(EventType t) {
         case EventType::SelfProtect:      return QStringLiteral("SelfProtect");
         case EventType::DnsQuery:         return QStringLiteral("DnsQuery");
         case EventType::ScriptScan:       return QStringLiteral("ScriptScan");
+        case EventType::WmiSubscription:  return QStringLiteral("WmiSubscription");
+        case EventType::FileRead:         return QStringLiteral("FileRead");
+        case EventType::ThreadAccess:     return QStringLiteral("ThreadAccess");
+        case EventType::DiskProtectionChange: return QStringLiteral("DiskProtectionChange");
+        case EventType::RemoteShareAccess: return QStringLiteral("RemoteShareAccess");
     }
     return QStringLiteral("ProcessCreate");
 }

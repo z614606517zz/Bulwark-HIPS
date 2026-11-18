@@ -63,6 +63,11 @@ QString edgeLabel(EventType t)
         case EventType::SelfProtect:      return u("触碰自我保护");
         case EventType::DnsQuery:         return u("DNS 解析");
         case EventType::ScriptScan:       return u("执行脚本内容");
+        case EventType::WmiSubscription:  return u("注册 WMI 永久订阅");
+        case EventType::FileRead:         return u("读取敏感文件");
+        case EventType::ThreadAccess:     return u("请求修改线程上下文权限");
+        case EventType::DiskProtectionChange: return u("磁盘保护变更");
+        case EventType::RemoteShareAccess: return u("远端共享访问检查");
     }
     return u("行为");
 }

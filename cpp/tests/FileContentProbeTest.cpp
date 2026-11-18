@@ -71,7 +71,10 @@ void testReadHead(const QString& dir)
     const FileContentSample b = FileContentProbe::readHead(big);
     check(b.kind == Kind::Present && b.size == 10000 && b.head.size() == FileContentClassifier::kHeadBytes
               && b.head == bigBody.left(FileContentClassifier::kHeadBytes),
-          "only the head of a big file is read; the reported size is the real one");
+          "the head range and reported size match the file");
+    check(b.middle == bigBody.mid(bigBody.size()/2, FileContentClassifier::kHeadBytes)
+              && b.tail == bigBody,
+          "middle and bounded tail are read from the same file handle");
 
     const QString empty = dir + QStringLiteral("/empty.txt");
     check(writeFile(empty, QByteArray()), "fixture: empty file written");

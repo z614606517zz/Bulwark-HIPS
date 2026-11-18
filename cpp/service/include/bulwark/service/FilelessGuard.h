@@ -53,6 +53,8 @@ private:
     void captureBaselines();
     QVector<Finding> scanUnbackedMemory(void* process, bool jitHost) const;
     QVector<Finding> scanHookPatches(void* process) const;
+    QVector<Finding> scanThreadExecution(void* process, int pid) const;
+    QHash<int, bulwark::SecurityEvent> contextRequests_;
     void emitFinding(int pid, const QString& imagePath, const Finding& f);
     int scanProcessImpl(int pid, bool urgent);
     static bool looksLikeKnownBypassStub(const QByteArray& bytes);

@@ -24,7 +24,7 @@ ShowUninstDetails show
 
 !define PRODUCT_NAME        "磐垒主动防御"
 !define PRODUCT_NAME_EN     "Bulwark"
-!define PRODUCT_VERSION     "1.0.9"
+!define PRODUCT_VERSION     "1.0"
 !define PRODUCT_PUBLISHER   "Bulwark Project"
 !define PRODUCT_UNINST_KEY  "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Bulwark"
 !define PRODUCT_REG_KEY     "SOFTWARE\Bulwark"
@@ -75,6 +75,16 @@ UninstPage custom un.UnOptionsCreate un.UnOptionsLeave
 !insertmacro MUI_UNPAGE_INSTFILES
 
 !insertmacro MUI_LANGUAGE "SimpChinese"
+
+; Windows file properties use a numeric version and the requested display version.
+VIProductVersion "1.0.0.0"
+VIFileVersion "1.0.0.0"
+VIAddVersionKey /LANG=${LANG_SIMPCHINESE} "ProductName" "${PRODUCT_NAME}"
+VIAddVersionKey /LANG=${LANG_SIMPCHINESE} "ProductVersion" "${PRODUCT_VERSION}"
+VIAddVersionKey /LANG=${LANG_SIMPCHINESE} "FileVersion" "${PRODUCT_VERSION}"
+VIAddVersionKey /LANG=${LANG_SIMPCHINESE} "FileDescription" "${PRODUCT_NAME} 安装程序"
+VIAddVersionKey /LANG=${LANG_SIMPCHINESE} "LegalCopyright" "Bulwark Project"
+
 
 ; 变量
 Var Dialog

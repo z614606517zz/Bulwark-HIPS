@@ -30,7 +30,7 @@ if(MSVC)
     endif()
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(Qt6 REQUIRED COMPONENTS Core Network)
 
 add_subdirectory(shared)
 add_subdirectory(service)

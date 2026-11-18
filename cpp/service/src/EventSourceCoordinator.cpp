@@ -1,4 +1,5 @@
 #include "bulwark/service/EventSourceCoordinator.h"
+#include "bulwark/engine/NetworkEndpoint.h"
 #include "bulwark/service/DriverEventSource.h"
 #include "bulwark/service/DriverControl.h"
 #include "bulwark/service/UserModeBehaviorSource.h"
@@ -131,18 +132,9 @@ int EventSourceCoordinator::pushConfiguredIpBlocks() {
         const QString s = raw.trimmed();
         if (s.isEmpty())
             continue;
-        QString ip = s;
-        quint16 port = 0;
-        const int colon = s.lastIndexOf(QLatin1Char(':'));
-        if (colon > 0) {
-            bool ok = false;
-            const int p = s.mid(colon + 1).toInt(&ok);
-            if (ok && p > 0 && p <= 65535) {
-                ip = s.left(colon);
-                port = static_cast<quint16>(p);
-            }
-        }
-        if (netBlock_->blockIp(ip, port)) ++pushed; else ++refused;
+        const auto endpoint = bulwark::engine::NetworkEndpoint::parse(s);
+        if (!endpoint) { ++refused; continue; }
+        if (netBlock_->blockIp(endpoint->host(), endpoint->port)) ++pushed; else ++refused;
     }
     if (pushed > 0 || refused > 0) {
         log_.info(QStringLiteral("用户态出站黑名单(appsettings BlockedRemoteEndpoints):已生效 %1 条%2。"
@@ -557,24 +549,20 @@ void EventSourceCoordinator::removeProtectedUiPid(int pid) {
 }
 
 bool EventSourceCoordinator::addBlockedIp(const QString& ip, quint16 port) {
-    const QString key = port > 0 ? QStringLiteral("%1:%2").arg(ip.trimmed()).arg(port)
-                                 : ip.trimmed();
-    const QString normalizedKey = key.toLower();
-    if (!normalizedKey.isEmpty())
-        runtimeBlockedEndpoints_.insert(normalizedKey);
-
-    if (driver_ && driver_->isConnected()) {
-        driver_->addBlockedIp(ip, port);
-        return true;
-    }
-    return netBlock_ && netBlock_->blockIp(ip, port);
+    auto endpoint = bulwark::engine::NetworkEndpoint::parse(ip);
+    if (!endpoint || !netBlock_ || !netBlock_->blockIp(endpoint->host(), port)) return false;
+    endpoint->port = port;
+    runtimeBlockedEndpoints_.insert(endpoint->text());
+    return true;
 }
 
 int EventSourceCoordinator::unblockIp(const QString& ip, quint16 port) {
-    const QString key = port > 0 ? QStringLiteral("%1:%2").arg(ip.trimmed()).arg(port)
-                                 : ip.trimmed();
-    runtimeBlockedEndpoints_.remove(key.toLower());
-    return netBlock_ ? netBlock_->unblockIp(ip, port) : 0;
+    auto endpoint = bulwark::engine::NetworkEndpoint::parse(ip);
+    if (!endpoint) return 0;
+    endpoint->port = port;
+    const int removed = netBlock_ ? netBlock_->unblockIp(endpoint->host(), port) : 0;
+    if (removed) runtimeBlockedEndpoints_.remove(endpoint->text());
+    return removed;
 }
 
 int EventSourceCoordinator::clearUserModeIpBlocks() {
@@ -658,6 +646,12 @@ bool EventSourceCoordinator::banProcess(int pid) {
     return driver_ ? driver_->banProcess(pid) : false;
 }
 
+void EventSourceCoordinator::emitObserved(const bulwark::SecurityEvent& e) {
+    auto observed=withProcessIdentity(e);
+    if (decorator_) decorator_(observed);
+    emit eventProduced(observed);
+}
+
 void EventSourceCoordinator::onBaseEvent(const bulwark::SecurityEvent& e) {
     if (kernelConnected() && e.type == bulwark::EventType::RemoteThread &&
         remoteThreadDedup_.shouldSuppress(remoteThreadDedupKey(e),
@@ -677,7 +671,7 @@ void EventSourceCoordinator::onBaseEvent(const bulwark::SecurityEvent& e) {
 
     if (kernelConnected() && event_routing_policy::suppressBaseWhenKernelConnected(e.type))
         return;
-    emit eventProduced(withProcessIdentity(e));
+    emitObserved(e);
 }
 
 void EventSourceCoordinator::onDriverEvent(const bulwark::SecurityEvent& e) {
@@ -696,11 +690,11 @@ void EventSourceCoordinator::onDriverEvent(const bulwark::SecurityEvent& e) {
                                            RemoteThreadSource::Driver,
                                            QDateTime::currentMSecsSinceEpoch()))
         return;
-    emit eventProduced(withProcessIdentity(e));
+    emitObserved(e);
 }
 
 void EventSourceCoordinator::onBehaviorEvent(const bulwark::SecurityEvent& e) {
-    emit eventProduced(withProcessIdentity(e));
+    emitObserved(e);
 }
 
 }

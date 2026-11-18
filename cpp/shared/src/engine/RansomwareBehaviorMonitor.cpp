@@ -45,7 +45,11 @@ constexpr int kMaxPending = 1024;
 
 // 应用数据、系统、开发与缓存目录天然高频写入大量已有文件,不在勒索监视范围。
 bool isMonitoredTarget(const QString& lower) {
-    if (lower.size() < 3 || lower.at(1) != QLatin1Char(':'))
+    const bool local = lower.size() >= 3 && lower.at(1) == QLatin1Char(':');
+    const bool share = lower.startsWith(QLatin1String("\\\\"))
+        && !lower.startsWith(QLatin1String("\\\\.\\"))
+        && !lower.startsWith(QLatin1String("\\\\?\\"));
+    if (!local && !share)
         return false;
     static const char* excluded[] = {
         "\\appdata\\", "\\windows\\", "\\program files", "\\programdata\\", "\\$recycle.bin\\",
@@ -206,6 +210,7 @@ void RansomwareBehaviorMonitor::pruneLedger(Ledger& ledger, qint64 nowMs) {
     prune(ledger.scrambled, nowMs);
     prune(ledger.cipherCopies, nowMs);
     prune(ledger.markedFiles, nowMs);
+    prune(ledger.structuralDamage, nowMs);
 }
 
 void RansomwareBehaviorMonitor::noteDestroyed(Ledger& ledger, const QString& path, qint64 stampMs) {
@@ -300,6 +305,10 @@ RansomwareBehaviorMonitor::Look RansomwareBehaviorMonitor::look(Ledger& ledger, 
 
     const ContentClaim claim = FileContentClassifier::claimOf(name);
     switch (FileContentClassifier::classify(claim, sample)) {
+    case ContentVerdict::Damaged:
+        if (!settled) return Look::Wait;
+        if (p.existing) ledger.structuralDamage.insert(path, stampMs);
+        return Look::Done;
     case ContentVerdict::Scrambled:
         recordScrambled(ledger, path, claim, p, stampMs);
         return Look::Done;
@@ -308,6 +317,7 @@ RansomwareBehaviorMonitor::Look RansomwareBehaviorMonitor::look(Ledger& ledger, 
             return Look::Wait;   // 写入可能还没落盘,看到的是旧内容
         // 内容完好。先前按「删了」记的账(先删后建)销掉。
         ledger.destroyed.remove(path);
+        ledger.structuralDamage.remove(path);
         return Look::Done;
     case ContentVerdict::Unknown:
         if (!settled)
@@ -491,6 +501,14 @@ void RansomwareBehaviorMonitor::score(Activity& a, const Ledger& ledger, Result&
     }
     if (a.containmentReported)
         return;
+    if (ledger.structuralDamage.size() >= 3) {
+        a.containmentReported = true;
+        r.score += 50;
+        r.containmentRequired = true;
+        r.reasons << u("多个已有文档的 ZIP 正文/CRC 校验失败，要求可逆收容；文件损坏本身不证明恶意(T1486):%1")
+            .arg(sampleNames(ledger.structuralDamage));
+        return;
+    }
     if (scrambled >= kScrambledThreshold
         && (scrambled >= kScrambledSameKindThreshold || spansKinds(ledger.scrambled))) {
         a.containmentReported = true;
@@ -526,9 +544,10 @@ RansomwareBehaviorMonitor::Result RansomwareBehaviorMonitor::observe(const Secur
     evict(nowMs);
     Activity& a = activity_[e.actorPid];
     const QString actor = e.actorPath.toLower();
-    if (a.actorPath != actor) {
+    if (a.actorPath != actor || a.actorCreationFileTime != e.actorCreationFileTime) {
         a = Activity{};
         a.actorPath = actor;
+        a.actorCreationFileTime = e.actorCreationFileTime;
     }
     a.lastMs = nowMs;
 
@@ -536,6 +555,15 @@ RansomwareBehaviorMonitor::Result RansomwareBehaviorMonitor::observe(const Secur
         r.score = 60;
         r.hardSignal = true;
         r.reasons << u("已判定为勒索行为的进程继续改写 / 删除用户文件(T1486)");
+        return r;
+    }
+
+    // A pending containment decision does not grant unlimited subsequent writes.
+    // Keep requesting reversible containment until the actor is explicitly trusted.
+    if (a.containmentReported) {
+        r.score = 50;
+        r.containmentRequired = true;
+        r.reasons << u("达到勒索止损阈值的进程仍在改写 / 删除用户文件(T1486)");
         return r;
     }
 
@@ -575,6 +603,9 @@ RansomwareBehaviorMonitor::Result RansomwareBehaviorMonitor::observe(const Secur
     }
     score(a, a.late, r);
     score(a, a.ledger, r);
+    r.confirmedDamagePaths = a.ledger.scrambled.keys();
+    r.confirmedDamagePaths.append(a.ledger.markedFiles.keys());
+    r.confirmedDamagePaths.append(a.ledger.structuralDamage.keys());
     a.convicted = r.hardSignal;
     return r;
 }

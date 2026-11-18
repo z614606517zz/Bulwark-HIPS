@@ -279,8 +279,35 @@ TrustDecision TrustPolicy::isTrustedSecurityProduct(const bulwark::SecurityEvent
     if (name.isEmpty() || !knownSecurityProcessNames().contains(name)) return {};
     if (!e.actorSigned || e.signatureMismatch || e.certRevoked || e.signedAfterCertExpiry)
         return {};
-    // 签名有效但证书是偷来的 —— 这一档是无条件放行,必须一并挡住(见 isAbusedSigner)。
+    // 共存身份也必须排除已知被盗用的证书(见 isAbusedSigner)。
     if (isAbusedSigner(e).ok) return {};
+    // Bind each protected product identity to its own publisher, not just any
+    // valid certificate on a familiar filename.
+    const struct ProductIdentity { const char* images; const char* publisher; } identities[] = {
+        { "msmpeng.exe|mpcmdrun.exe|nissrv.exe|mpdefendercoreservice.exe|securityhealthservice.exe", "Microsoft" },
+        { "avp.exe|avpui.exe|kavfs.exe|kavfswp.exe|ksde.exe|ksdeui.exe|avpsus.exe|klnagent.exe|ksn.exe", "Kaspersky" },
+        { "ekrn.exe|egui.exe", "ESET" },
+        { "mcshield.exe|masvc.exe|macmnsvc.exe|mfemms.exe", "McAfee|Trellix" },
+        { "ccsvchst.exe|symcorpui.exe|nortonsecurity.exe|rtvscan.exe", "Symantec|Norton|Gen Digital|Broadcom" },
+        { "avastsvc.exe|avastui.exe|afwserv.exe|avgsvc.exe|avgui.exe", "Avast|AVG|Gen Digital" },
+        { "avguard.exe|avgnt.exe|sched.exe", "Avira" },
+        { "bdagent.exe|vsserv.exe|bdservicehost.exe", "Bitdefender" },
+        { "ntrtscan.exe|pccntmon.exe|tmbmsrv.exe", "Trend Micro" },
+        { "savservice.exe|sophosfs.exe|sophosfilescanner.exe", "Sophos" },
+        { "360tray.exe|360sd.exe|360rp.exe|zhudongfangyu.exe|360safe.exe", "Beijing Qihu|Qizhi|360 Security|奇虎|奇智" },
+        { "hipstray.exe|hipsdaemon.exe|usysdiag.exe|wsctrl.exe", "Huorong|火绒" },
+        { "qqpcrtp.exe|qqpctray.exe|qqpcmgr.exe", "Tencent|腾讯" },
+        { "kxetray.exe|kxescore.exe|kscan.exe|ksafetray.exe|kwsprotect64.exe", "Kingsoft|金山" },
+    };
+    bool publisherBound = false;
+    for (const ProductIdentity& product : identities) {
+        if (QString::fromLatin1(product.images).split(QLatin1Char('|')).contains(name)) {
+            publisherBound = publisherMatches(e.actorPublisher,
+                QString::fromUtf8(product.publisher).split(QLatin1Char('|')));
+            break;
+        }
+    }
+    if (!publisherBound) return {};
     QString lower = e.actorPath.toLower();
     lower.replace(QLatin1Char('/'), QLatin1Char('\\'));
     if (!containsDir(protectedInstallDirs(), lower)) return {};
@@ -365,14 +392,14 @@ TrustDecision TrustPolicy::isTrustedVendorApp(const bulwark::SecurityEvent& e) {
     if (const auto app =
             TrustedSoftwareCatalog::instance().match(e.actorPath, e.actorPublisher)) {
         return { true,
-                 u("软件信任库:") + app->name + u("(") + app->vendor + u(")·签名健康,时序检测前放行") };
+                 u("软件信任库:") + app->name + u("(") + app->vendor + u(")·签名健康，可跳过低置信时序分析") };
     }
 
     if (name.isEmpty() || !trustedVendorApps().contains(name))
         return {};
     const QString pub = matchedPublisher(e.actorPublisher, benignPublishers());
     if (!pub.isEmpty())
-        return { true, u("已知良性厂商应用(") + name + u(")·签名健康(") + pub + u("),检测前放行") };
+        return { true, u("已知良性厂商应用(") + name + u(")·签名健康(") + pub + u(")，可跳过低置信时序分析") };
     return {};
 }
 

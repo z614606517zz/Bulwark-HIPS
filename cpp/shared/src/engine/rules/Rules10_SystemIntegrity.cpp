@@ -20,8 +20,11 @@ void hostsAndAccessibility(Segment& s) {
             .target(u("*\\System32\\") + name).exemptOs().hard();
         s.reg(Block, u("为辅助功能程序 ") + name + u(" 设置映像劫持调试器(锁屏后门,T1546.008)"))
             .target(u("*\\Image File Execution Options\\") + name + u("\\Debugger")).exemptOs().hard();
+        for (const char* mutation : { " add ", "new-item", "set-item", "createsubkey" })
+            s.proc(Block, u("命令行为辅助功能程序 ") + name + u(" 设置映像劫持调试器(锁屏后门,T1546.008)"))
+                .cmd(u("*") + u(mutation) + u("*image file execution options\\") + name + u("*debugger*")).hard();
         s.proc(Block, u("命令行为辅助功能程序 ") + name + u(" 设置映像劫持调试器(锁屏后门,T1546.008)"))
-            .cmd(u("*image file execution options\\") + name + u("*debugger*")).hard();
+            .cmd(u("*image file execution options\\") + name + u("*setvalue*debugger*")).hard();
         // 「copy <某程序>.exe ... <辅助功能程序>」:覆盖它,或先备份(copy sethc.exe sethc.exe.bak)再覆盖,
         // 都是锁屏后门的步骤;正常运维不会动这几个文件。
         for (const char* verb : { "*copy *.exe *", "*move *.exe *", "*xcopy *.exe *" })

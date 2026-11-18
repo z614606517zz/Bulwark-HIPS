@@ -34,6 +34,17 @@ void recoveryDestruction(Segment& s) {
 }
 
 void dataDestruction(Segment& s) {
+    // Native disk encryption is legitimate administration and also an impact
+    // primitive. Confirm state-changing operations; status/queries remain quiet.
+    for (const char* p : { "* -on *", "* -on", "* -lock *", "*-protectors*-delete*",
+                           "*-protectors*-disable*", "* -changepassword*", "* -forcerecovery*" })
+        s.proc(Ask, "开启磁盘加密或改变恢复保护器(BitLocker 滥用,T1486)")
+            .actor("*\\manage-bde.exe").cmd(p).disableSignedAutoAllow();
+    for (const QString& host : exes({ "powershell.exe", "pwsh.exe", "powershell_ise.exe" }))
+        for (const char* p : { "*enable-bitlocker*", "*remove-bitlockerkeyprotector*",
+                               "*add-bitlockerkeyprotector*", "*lock-bitlocker*" })
+            s.proc(Ask, "开启磁盘加密或改变恢复保护器(BitLocker 滥用,T1486)")
+                .actor(host).cmd(p).disableSignedAutoAllow();
     for (const char* wiper : { "caddywiper", "hermeticwiper", "isaacwiper", "whispergate", "doublezero",
                                "industroyer", "azovwiper" }) {
         s.proc(Block, u("运行擦除器 ") + u(wiper) + u("(T1485/T1561)"))
@@ -73,6 +84,10 @@ void serviceSabotage(Segment& s) {
 
 void addImpactRules(QVector<DefenseRule>& out) {
     Segment s(out, "破坏与勒索");
+    s.add(EventType::DiskProtectionChange, Ask, u("BitLocker API 改变加密或密钥保护器（变更后观测，T1486）"))
+        .disableSignedAutoAllow().disableDevToolAutoAllow();
+    s.add(EventType::RemoteShareAccess, Ask, u("共享访问出现敏感读取或批量写入请求（访问检查告警，T1021.002）"))
+        .disableSignedAutoAllow().disableDevToolAutoAllow();
     recoveryDestruction(s);
     dataDestruction(s);
     serviceSabotage(s);

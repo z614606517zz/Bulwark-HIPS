@@ -1,5 +1,6 @@
 #include "bulwark/engine/NetworkBehaviorMonitor.h"
 #include "bulwark/Clock.h"
+#include "bulwark/engine/NetworkEndpoint.h"
 #include <QMutexLocker>
 #include <cmath>
 
@@ -22,8 +23,8 @@ constexpr qint64 kFanoutCooldownMs = 10 * 60 * 1000;
 constexpr int kMaxKeys = 4096;
 
 QString remoteHostOf(const QString& endpoint) {
-    const qsizetype colon = endpoint.lastIndexOf(QLatin1Char(':'));
-    return colon > 0 ? endpoint.left(colon) : endpoint;
+    const auto parsed = NetworkEndpoint::parse(endpoint);
+    return parsed ? parsed->host() : endpoint;
 }
 
 }

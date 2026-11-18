@@ -17,6 +17,7 @@
 #include "bulwark/engine/DownloaderBehaviorMonitor.h"
 #include "bulwark/engine/NetworkBehaviorMonitor.h"
 #include "bulwark/engine/RansomwareBehaviorMonitor.h"
+#include "bulwark/engine/CrossEventMonitor.h"
 
 namespace bulwark::engine {
 
@@ -83,8 +84,6 @@ private:
 
     std::optional<QString> userTrustNoteForPath(const QString& path) const;
 
-    static bool targetIsTrustEligible(EventType t);
-
     // 绝大多数规则锚定主体映像名(*\powershell.exe):按映像名再分一层,只把可能命中的规则拿来匹配。
     struct RuleBucket {
         QVector<DefenseRule> anyActor;
@@ -107,6 +106,7 @@ private:
     mutable QMutex canaryLock_;
 
     RansomwareBehaviorMonitor ransomware_;
+    CrossEventMonitor correlations_;
     DownloaderBehaviorMonitor downloader_;
     CommandBurstMonitor bursts_;
     NetworkBehaviorMonitor network_;

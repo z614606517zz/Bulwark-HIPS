@@ -160,6 +160,9 @@ QJsonObject SecurityEvent::toJson() const {
     o["originatorPath"] = originatorPath;
     o["parentPid"] = parentPid;
     o["parentPath"] = parentPath;
+    if (actorCreationFileTime) o["actorCreationFileTime"] = QString::number(*actorCreationFileTime);
+    if (parentCreationFileTime) o["parentCreationFileTime"] = QString::number(*parentCreationFileTime);
+    if (!actorUserSid.isEmpty()) o["actorUserSid"] = actorUserSid;
     if (creatorPid > 0) o["creatorPid"] = creatorPid;
     if (spoofedParentPid > 0) {
         o["spoofedParentPid"] = spoofedParentPid;
@@ -175,6 +178,14 @@ QJsonObject SecurityEvent::toJson() const {
     o["commandLine"] = commandLine;
     o["target"] = target;
     o["detail"] = detail;
+    if (!remoteAddress.isEmpty()) o["remoteAddress"] = remoteAddress;
+    if (!remoteUserSid.isEmpty()) o["remoteUserSid"] = remoteUserSid;
+    if (!remoteLogonId.isEmpty()) o["remoteLogonId"] = remoteLogonId;
+    if (!remoteShare.isEmpty()) o["remoteShare"] = remoteShare;
+    if (!remoteOriginKind.isEmpty()) o["remoteOriginKind"] = remoteOriginKind;
+    if (!auditRecordId.isEmpty()) o["auditRecordId"] = auditRecordId;
+    if (!auditOperation.isEmpty()) o["auditOperation"] = auditOperation;
+    if (auditAccessMask) o["auditAccessMask"] = static_cast<double>(auditAccessMask);
     if (registryOp != RegistryOperation::Unknown)
         o["registryOp"] = registryOperationToString(registryOp);
     if (hasRegistryDword) {
@@ -241,6 +252,12 @@ SecurityEvent SecurityEvent::fromJson(const QJsonObject& o) {
     e.originatorPath = getStr(o, "originatorPath");
     e.parentPid = getInt(o, "parentPid");
     e.parentPath = getStr(o, "parentPath");
+    bool identityOk = false;
+    const quint64 actorTime = getStr(o, "actorCreationFileTime").toULongLong(&identityOk);
+    if (identityOk && actorTime) e.actorCreationFileTime = actorTime;
+    const quint64 parentTime = getStr(o, "parentCreationFileTime").toULongLong(&identityOk);
+    if (identityOk && parentTime) e.parentCreationFileTime = parentTime;
+    e.actorUserSid = getStr(o, "actorUserSid");
     e.creatorPid = getInt(o, "creatorPid");
     e.spoofedParentPid = getInt(o, "spoofedParentPid");
     e.spoofedParentPath = getStr(o, "spoofedParentPath");
@@ -254,6 +271,14 @@ SecurityEvent SecurityEvent::fromJson(const QJsonObject& o) {
     e.commandLine = getStr(o, "commandLine");
     e.target = getStr(o, "target");
     e.detail = getStr(o, "detail");
+    e.remoteAddress = getStr(o,"remoteAddress");
+    e.remoteUserSid = getStr(o,"remoteUserSid");
+    e.remoteLogonId = getStr(o,"remoteLogonId");
+    e.remoteShare = getStr(o,"remoteShare");
+    e.remoteOriginKind = getStr(o,"remoteOriginKind");
+    e.auditRecordId = getStr(o,"auditRecordId");
+    e.auditOperation = getStr(o,"auditOperation");
+    e.auditAccessMask = static_cast<quint32>(o.value(QLatin1String("auditAccessMask")).toDouble());
     e.registryOp = registryOperationFromString(getStr(o, "registryOp"));
     e.hasRegistryDword = getBool(o, "hasRegistryDword");
     if (e.hasRegistryDword)

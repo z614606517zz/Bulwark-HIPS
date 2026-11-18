@@ -150,6 +150,14 @@ FileContentSample FileContentProbe::readHead(const QString& path) {
     LARGE_INTEGER actual{};
     if (::GetFileSizeEx(h, &actual))
         size = actual.QuadPart;
+    BY_HANDLE_FILE_INFORMATION before{};
+    FILE_ATTRIBUTE_TAG_INFO attributes{};
+    if (!::GetFileInformationByHandle(h, &before)
+        || !::GetFileInformationByHandleEx(h, FileAttributeTagInfo, &attributes, sizeof(attributes))
+        || (attributes.FileAttributes & kHandsOff)) {
+        ::CloseHandle(h);
+        return out;
+    }
 
     const int want = FileContentClassifier::kHeadBytes;
     QByteArray head(want, Qt::Uninitialized);
@@ -165,7 +173,35 @@ FileContentSample FileContentProbe::readHead(const QString& path) {
             break;
         total += static_cast<int>(got);
     }
+    // Read additional bounded ranges before closing the same file handle.
+    const auto readRange = [h](qint64 offset, int bytes) {
+        QByteArray value(bytes, Qt::Uninitialized);
+        LARGE_INTEGER pos{}; pos.QuadPart = offset;
+        DWORD got = 0;
+        if (!::SetFilePointerEx(h, pos, nullptr, FILE_BEGIN)
+            || !::ReadFile(h, value.data(), static_cast<DWORD>(bytes), &got, nullptr)) return QByteArray();
+        value.truncate(static_cast<qsizetype>(got));
+        return value;
+    };
+    if (size > 2 * FileContentClassifier::kHeadBytes)
+        out.middle = readRange(size / 2, FileContentClassifier::kHeadBytes);
+    if (size > FileContentClassifier::kHeadBytes) {
+        const int tailBytes = static_cast<int>(qMin<qint64>(size, FileContentClassifier::kTailBytes));
+        out.tail = readRange(size - tailBytes, tailBytes);
+    }
+    if (total >= 4 && (head.startsWith(QByteArray("PK\x03\x04",4)) || head.startsWith(QByteArray("PK\x05\x06",4)))) {
+        out.integrity = bulwark::engine::FileIntegrity::Unsupported;
+        if (size <= bulwark::engine::ZipIntegrity::maxArchiveBytes) {
+            const QByteArray archive = readRange(0, static_cast<int>(size));
+            if (archive.size() == size) out.integrity = bulwark::engine::ZipIntegrity::verify(archive);
+        }
+    }
+    BY_HANDLE_FILE_INFORMATION after{};
+    const bool stable = ::GetFileInformationByHandle(h, &after)
+        && before.nFileSizeHigh == after.nFileSizeHigh && before.nFileSizeLow == after.nFileSizeLow
+        && ::CompareFileTime(&before.ftLastWriteTime, &after.ftLastWriteTime) == 0;
     ::CloseHandle(h);
+    if (!stable) { out.kind = Kind::Busy; return out; }
     head.truncate(total);
 
     out.kind = Kind::Present;

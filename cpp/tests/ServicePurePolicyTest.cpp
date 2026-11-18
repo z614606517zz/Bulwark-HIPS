@@ -2,6 +2,8 @@
 #include "bulwark/service/AmsiContentPolicy.h"
 #include "bulwark/service/FilelessPolicy.h"
 #include "bulwark/service/SensitiveDataGuardPolicy.h"
+#include "bulwark/service/RansomGuardWriterPolicy.h"
+#include "bulwark/service/TelemetryPolicy.h"
 
 #include <QByteArray>
 #include <QString>
@@ -141,6 +143,25 @@ int main() {
     testBypassStub();
     testSignerThumbprint();
     testSensitiveDataGuard();
+    using bulwark::service::telemetry_policy::needsCompleteModuleTelemetry;
+    check(needsCompleteModuleTelemetry(QStringLiteral("C:/Windows/System32/LSASS.EXE")),
+          "telemetry: critical hosts retain system-directory module events");
+    check(!needsCompleteModuleTelemetry(QStringLiteral("C:/Tools/notlsass.exe")),
+          "telemetry: host names are matched exactly");
+    bulwark::SecurityEvent editor;
+    editor.actorPath = QStringLiteral("C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE");
+    editor.actorSigned = true;
+    editor.actorPublisher = QStringLiteral("Microsoft Corporation");
+    bulwark::engine::SystemPaths::setSystemDriveForTest(QStringLiteral("c:"));
+    using bulwark::service::ransom_writer_policy::canEnrollDocumentWriter;
+    check(canEnrollDocumentWriter(editor), "writer: signed installed Office can be enrolled exactly");
+    editor.actorPublisher = QStringLiteral("Unrelated Publisher");
+    check(!canEnrollDocumentWriter(editor), "writer: filename does not grant a different publisher access");
+    editor.actorPublisher = QStringLiteral("Microsoft Corporation");
+    editor.actorPath = QStringLiteral("C:\\Users\\alice\\Temp\\WINWORD.EXE");
+    check(!canEnrollDocumentWriter(editor), "writer: writable staging directories are not install roots");
+    editor.actorPath = QStringLiteral("C:\\Program Files\\Audit\\unknown.exe");
+    check(!canEnrollDocumentWriter(editor), "writer: arbitrary Program Files applications do not inherit authority");
     std::printf("%d/%d passed\n", g_total - g_fail, g_total);
     return g_fail == 0 ? 0 : 1;
 }

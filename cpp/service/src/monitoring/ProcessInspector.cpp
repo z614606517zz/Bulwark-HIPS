@@ -20,6 +20,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <sddl.h>
 #include <wincrypt.h>
 #include <wintrust.h>
 #include <softpub.h>
@@ -1338,4 +1339,27 @@ bool ProcessInspector::isCurrentProcessInstance(const ProcessInstance& expected)
         return false;
     CloseHandle(h);
     return true;
+}
+
+QString ProcessInspector::tryGetUserSid(int pid) {
+    const HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(pid));
+    if (!process) return {};
+    HANDLE token = nullptr;
+    const BOOL opened = ::OpenProcessToken(process, TOKEN_QUERY, &token);
+    ::CloseHandle(process);
+    if (!opened) return {};
+    DWORD bytes = 0;
+    ::GetTokenInformation(token, TokenUser, nullptr, 0, &bytes);
+    if (bytes == 0 || bytes > 65536) { ::CloseHandle(token); return {}; }
+    QByteArray buffer(static_cast<qsizetype>(bytes), Qt::Uninitialized);
+    QString result;
+    if (::GetTokenInformation(token, TokenUser, buffer.data(), bytes, &bytes)) {
+        LPWSTR sid = nullptr;
+        if (::ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(buffer.data())->User.Sid, &sid)) {
+            result = QString::fromWCharArray(sid);
+            ::LocalFree(sid);
+        }
+    }
+    ::CloseHandle(token);
+    return result;
 }

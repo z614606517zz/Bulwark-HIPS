@@ -236,9 +236,12 @@ BOOLEAN  BlwImageNameIn(_In_reads_(TableCount) const BLW_NAME_ENTRY* Table,
                         _In_opt_ PCWSTR Path, _In_ USHORT Chars);
 
 BOOLEAN  BlwIsInjectionTelemetryTarget(_In_opt_ PCWSTR Path, _In_ USHORT Chars);
+BOOLEAN  BlwIsRansomGuardSystemWriter(_In_opt_ PCWSTR Path, _In_ USHORT Chars);
 
 BOOLEAN  BlwCmdPatternMatches(_In_ const BLW_PROTECTED_PATH* Entry,
                               _In_reads_(TargetChars) PCWSTR Target,
                               _In_ ULONG TargetChars);
 
 void     BlwLogPattern(_In_ PCSTR Reason, _In_opt_ PCWSTR Path, _In_ USHORT Chars);
+
+BOOLEAN BlwParseIpv6Hex(_In_reads_(Chars) PCWSTR Hex, _In_ USHORT Chars, _Out_writes_(16) UCHAR* Address);

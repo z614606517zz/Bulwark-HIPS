@@ -26,9 +26,12 @@
 #include "bulwark/service/RegistryRollbackPolicy.h"
 #include "bulwark/service/SelfHardening.h"
 #include "bulwark/service/SensitiveDataGuardPolicy.h"
+#include "bulwark/service/RansomGuardWriterPolicy.h"
 #include "bulwark/service/FileContentProbe.h"
 #include "bulwark/service/BootSectorGuard.h"
 #include "bulwark/service/FilelessGuard.h"
+#include "bulwark/service/NativeAuditEventSource.h"
+#include "bulwark/service/WmiRepositorySource.h"
 #include "bulwark/service/ResourceAbuseMonitor.h"
 #include "bulwark/service/PersistenceScanner.h"
 #include "bulwark/service/ForensicsService.h"
@@ -296,7 +299,7 @@ void appendConfiguredPaths(QStringList& out, const QStringList& configured)
 void appendTrustedActors(QStringList& out, const QVector<bulwark::DefenseRule>& rules)
 {
     for (const bulwark::DefenseRule& r : rules) {
-        if (!r.isTrustEntry())
+        if (!r.enabled || r.isExpired(bulwark::nowUtc()) || !r.isTrustEntry())
             continue;
         const bool isDir = r.actorPath.trimmed().isEmpty() && !r.actorPattern.trimmed().isEmpty();
         QString p = isDir ? r.actorPattern.trimmed() : r.actorPath.trimmed();
@@ -314,6 +317,44 @@ QStringList composeRansomGuardWriters(const bulwark::service::BulwarkOptions& op
     QStringList out;
     appendConfiguredPaths(out, options.RansomGuardWriters);
     appendTrustedActors(out, rules);
+    // App Paths is discovery only. Every exact binary must independently pass
+    // signature, publisher, executable-name and protected-install-root checks.
+    for (const wchar_t* name : { L"WINWORD.EXE", L"EXCEL.EXE", L"POWERPNT.EXE", L"MSACCESS.EXE",
+                                L"OUTLOOK.EXE", L"wps.exe", L"et.exe", L"wpp.exe",
+                                L"Acrobat.exe", L"AcroRd32.exe", L"Photoshop.exe" }) {
+        const QString keyPath = QStringLiteral("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\")
+            + QString::fromWCharArray(name);
+        for (const REGSAM view : { KEY_WOW64_64KEY, KEY_WOW64_32KEY }) {
+            HKEY key = nullptr;
+            if (::RegOpenKeyExW(HKEY_LOCAL_MACHINE, reinterpret_cast<LPCWSTR>(keyPath.utf16()),
+                                0, KEY_QUERY_VALUE | view, &key) != ERROR_SUCCESS)
+                continue;
+            wchar_t value[32768] = {};
+            DWORD bytes = sizeof(value), type = 0;
+            const LSTATUS status = ::RegQueryValueExW(key, nullptr, nullptr, &type,
+                reinterpret_cast<LPBYTE>(value), &bytes);
+            ::RegCloseKey(key);
+            if (status != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ)
+                || bytes < sizeof(wchar_t) || bytes > sizeof(value))
+                continue;
+            value[32767] = L'\0';
+            QString path = QString::fromWCharArray(value).trimmed();
+            if (path.startsWith(QLatin1Char('"')) && path.endsWith(QLatin1Char('"')))
+                path = path.mid(1, path.size() - 2);
+            if (out.contains(path, Qt::CaseInsensitive) || !QFileInfo(path).isFile())
+                continue;
+            const auto facts = bulwark::service::monitoring::ProcessInspector::collectForensics(path, true);
+            bulwark::SecurityEvent candidate;
+            candidate.actorPath = path;
+            candidate.actorSigned = facts.trustedSignature;
+            candidate.actorPublisher = facts.publisher;
+            candidate.actorCertThumbprint = facts.cert.thumbprint;
+            candidate.certRevoked = facts.cert.revoked;
+            candidate.signedAfterCertExpiry = facts.cert.signedAfterCertExpiry;
+            if (bulwark::service::ransom_writer_policy::canEnrollDocumentWriter(candidate))
+                appendDriveLessPath(out, path, false);
+        }
+    }
     return out;
 }
 
@@ -1542,11 +1583,11 @@ static int serviceRun(int argc, char** argv) {
     if (!options.loadFromFile(appsettings))
         log.warning(QStringLiteral("appsettings.json 解析失败,使用默认值: %1").arg(appsettings));
 
-    if (options.ThreatFoxFeed.Enabled && options.ThreatFoxFeed.GenerateDomainRules
-        && !options.ThreatFoxFeed.resolveAuthKey().isEmpty() && options.Etw.SuspiciousOnly) {
+    if (options.Etw.SuspiciousOnly || options.Etw.NetworkUntrustedOnly) {
         options.Etw.SuspiciousOnly = false;
-        log.warning(QStringLiteral("ThreatFox 域名规则已启用：Etw.SuspiciousOnly 自动关闭，"
-                                   "DNS 事件将经过限流后送入规则引擎，否则普通域名 IOC 无法命中。"));
+        options.Etw.NetworkUntrustedOnly = false;
+        log.warning(QStringLiteral("旧版 DNS/签名外联预过滤已关闭：限流后的事件必须先经过显式规则，"
+                                   "DGA 和签名仅用于后续分析与降噪。"));
     }
 
     monitoring::ProcessInspector::onlineRevocationCheck = options.OnlineCertRevocationCheck;
@@ -2640,6 +2681,13 @@ static int serviceRun(int argc, char** argv) {
 
     auto coordinator = std::make_unique<EventSourceCoordinator>(baseSource.get(), behaviorSource.get(), options);
     coordinatorPtr = coordinator.get();
+
+    auto auditSource = std::make_unique<NativeAuditEventSource>(options.SmbAuditEnabled,options.BitLockerAuditEnabled);
+    auto wmiRepository = std::make_unique<WmiRepositorySource>();
+    coordinator->addAuxSource(auditSource.get());
+    if (options.WmiRepositoryWatchEnabled) coordinator->addAuxSource(wmiRepository.get());
+    const QPointer<NativeAuditEventSource> auditGuard(auditSource.get());
+    coordinator->setEventDecorator([auditGuard](bulwark::SecurityEvent& e) { if (auditGuard) auditGuard->annotate(e); });
 
     auto bootGuard = std::make_unique<BootSectorGuard>();
     auto fileless = std::make_unique<FilelessGuard>();

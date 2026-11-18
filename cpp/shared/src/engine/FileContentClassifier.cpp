@@ -73,6 +73,25 @@ bool printableAscii(unsigned char c) { return c >= 0x20 && c < 0x7F; }
 
 bool asciiDigit(char c) { return c >= '0' && c <= '9'; }
 
+// A ZIP magic alone is not evidence that an OOXML/archive body is intact.
+// Reject impossible header lengths without attempting to decompress untrusted data.
+bool zipHeaderFits(const FileContentSample& sample) {
+    const QByteArray& h = sample.head;
+    const auto word = [&h](qsizetype at) -> quint32 {
+        return static_cast<quint32>(byteAt(h, at))
+            | (static_cast<quint32>(byteAt(h, at + 1)) << 8);
+    };
+    if (h.startsWith(QByteArray("PK\x03\x04", 4))) {
+        if (h.size() < 30) return false;
+        const quint64 headerBytes = 30ULL + word(26) + word(28);
+        return word(26) > 0 && headerBytes <= static_cast<quint64>(sample.size);
+    }
+    if (h.startsWith(QByteArray("PK\x05\x06", 4))) {
+        return h.size() >= 22 && 22ULL + word(20) <= static_cast<quint64>(sample.size);
+    }
+    return true;
+}
+
 // 标记太短或位置不固定的格式,逐个加验。
 bool hasSpecialSignature(const QByteArray& h) {
     const qsizetype n = h.size();
@@ -310,11 +329,29 @@ ContentVerdict FileContentClassifier::classify(const ContentClaim& claim, const 
     if (sample.kind != FileContentSample::Kind::Present)
         return ContentVerdict::Unknown;
     const QByteArray& head = sample.head;
+    if (sample.integrity == FileIntegrity::Invalid) return ContentVerdict::Damaged;
+    if (sample.integrity == FileIntegrity::Unsupported) return ContentVerdict::Unknown;
     // 预分配或刚建好还没写入的文件读出来就是空的或全零。
     if (sample.size <= 0 || head.isEmpty() || allZero(head))
         return ContentVerdict::Unsettled;
-    if (hasKnownSignature(head))
+    static const QSet<QString> plain = { "txt", "csv", "json", "xml", "yaml", "yml", "md", "log" };
+    if (plain.contains(claim.type)) {
+        for (const QByteArray* range : { &sample.middle, &sample.tail })
+            if (range->size() >= kMinJudgeBytes && !looksLikeText(*range)
+                && entropyBits(*range) >= kHighEntropy)
+                return ContentVerdict::Scrambled;
+    }
+    if (hasKnownSignature(head)) {
+        if (!zipHeaderFits(sample)) return ContentVerdict::Unknown;
+        if (head.startsWith(QByteArray("PK\x03\x04", 4)) && !sample.tail.isEmpty()) {
+            const qsizetype end = sample.tail.lastIndexOf(QByteArray("PK\x05\x06", 4));
+            if (end < 0 || end + 22 > sample.tail.size()) return ContentVerdict::Unknown;
+            const auto* b = reinterpret_cast<const unsigned char*>(sample.tail.constData() + end);
+            const int comment = b[20] | (b[21] << 8);
+            if (end + 22 + comment != sample.tail.size()) return ContentVerdict::Unknown;
+        }
         return ContentVerdict::Recognized;
+    }
     if (looksLikeText(head)) {
         // 名字说是图片 / 压缩包、内容却是文本:对不上,但也不是乱码(常见于下载失败存下的网页)。
         return (claim.type.isEmpty() || claim.textAllowed) ? ContentVerdict::Recognized : ContentVerdict::Unknown;

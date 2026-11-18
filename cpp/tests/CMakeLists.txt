@@ -1,5 +1,34 @@
 find_package(Qt6 REQUIRED COMPONENTS Core Network)
 
+add_executable(audit_integrity_unit AuditIntegrityTest.cpp ../service/src/NativeAuditPolicy.cpp ../service/src/FileContentProbe.cpp)
+target_link_libraries(audit_integrity_unit PRIVATE bulwark_shared)
+target_include_directories(audit_integrity_unit PRIVATE ../service/include)
+set_target_properties(audit_integrity_unit PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+if(MSVC)
+    target_compile_options(audit_integrity_unit PRIVATE /W4 /WX /permissive- /utf-8)
+endif()
+add_test(NAME audit_integrity_unit COMMAND audit_integrity_unit)
+
+add_executable(coverage_expansion_unit CoverageExpansionTest.cpp)
+target_link_libraries(coverage_expansion_unit PRIVATE bulwark_shared)
+target_include_directories(coverage_expansion_unit PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../service/include")
+set_target_properties(coverage_expansion_unit PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+if(MSVC)
+    target_compile_options(coverage_expansion_unit PRIVATE /W4 /WX /permissive- /utf-8)
+endif()
+add_test(NAME coverage_expansion_unit COMMAND coverage_expansion_unit)
+
+add_executable(rule_hardening_unit RuleHardeningTest.cpp)
+target_link_libraries(rule_hardening_unit PRIVATE bulwark_shared Qt6::Core)
+target_compile_features(rule_hardening_unit PRIVATE cxx_std_20)
+set_target_properties(rule_hardening_unit PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+if(MSVC)
+    target_compile_options(rule_hardening_unit PRIVATE /W4 /WX /permissive- /utf-8)
+else()
+    target_compile_options(rule_hardening_unit PRIVATE -Wall -Wextra -Werror)
+endif()
+add_test(NAME rule_hardening_unit COMMAND rule_hardening_unit)
+
 add_executable(bulwark_snapshot SnapshotTool.cpp)
 target_link_libraries(bulwark_snapshot PRIVATE bulwark_shared Qt6::Core)
 target_compile_features(bulwark_snapshot PRIVATE cxx_std_20)
@@ -57,6 +86,10 @@ set_tests_properties(verdict_snapshot builtin_ruleset_ids PROPERTIES
     ENVIRONMENT "QT_HASH_SEED=0"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_blw_qt_bin}"
     LABELS "engine;snapshot")
+
+set_tests_properties(rule_hardening_unit PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_blw_qt_bin}"
+    LABELS "engine;policy;security")
 
 set_tests_properties(service_regression PROPERTIES
     ENVIRONMENT "QT_HASH_SEED=0"

@@ -122,7 +122,7 @@ def draw_side_panel():
 
     # 版本
     f_v = ImageFont.truetype(F_EN, 11)
-    t3 = 'v1.0.9'
+    t3 = 'v1.0'
     w3 = d.textlength(t3, font=f_v)
     d.text(((W - w3) / 2, 272), t3, font=f_v, fill=(0x8C, 0xA8, 0xA0))
 

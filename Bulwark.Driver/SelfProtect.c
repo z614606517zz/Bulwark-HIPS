@@ -476,6 +476,7 @@ BlwReportMemProtect(_In_ ULONG actorPid, _In_ ULONG targetPid)
 C_ASSERT((BLW_REPORT_SLOTS & (BLW_REPORT_SLOTS - 1)) == 0);
 static volatile LONG64 g_CredDumpSeen[BLW_REPORT_SLOTS];
 static volatile LONG64 g_UiGuardSeen[BLW_REPORT_SLOTS];
+static volatile LONG64 g_ThreadContextSeen[BLW_REPORT_SLOTS];
 
 // 同一格被别的 PID 占走只会多报一条。
 BOOLEAN
@@ -665,6 +666,17 @@ BlwPreOperationCallback(
     }
 
     BlwGuardProductUi(OperationInformation, pDesired, actorPid);
+
+    // This is a requested access right, not evidence that an APC ran or a context changed.
+    // Kernel handles/self-access are excluded. Existing target protections below still strip rights.
+    if (g_Blw.Active && KeGetCurrentIrql() == PASSIVE_LEVEL && actorPid > 4 &&
+        OperationInformation->ObjectType == *PsThreadType && (*pDesired & THREAD_SET_CONTEXT) != 0) {
+        const ULONG victim = HandleToULong(PsGetThreadProcessId((PETHREAD)OperationInformation->Object));
+        // DuplicateHandle may deposit the handle into a different process. Its actor is ambiguous here.
+        if (OperationInformation->Operation == OB_OPERATION_HANDLE_CREATE && victim > 4 && victim != actorPid &&
+            !BlwPidIsProtected(actorPid) && BlwReportOncePerWindow(g_ThreadContextSeen, actorPid))
+            BlwReportEvent(BlwEventThreadContextAccess, actorPid, victim, NULL, NULL, *pDesired, 0);
+    }
 
     anyTargetMask = (ULONG64)g_Blw.ProtectedPidMask |
                     (ULONG64)g_Blw.CredProtPidMask |

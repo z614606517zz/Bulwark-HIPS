@@ -431,6 +431,10 @@ BlwMessageNotify(
         BlwClearBlockList();
         KdPrint(("[Bulwark] Net block list cleared.\n"));
         break;
+    case BLW_CMD_ADD_BLOCKIP6:
+        if (cfg.PathLength != 32) return STATUS_INVALID_PARAMETER;
+        if (!BlwAddBlockIp6(cfg.Path, cfg.BlockPort)) return STATUS_INSUFFICIENT_RESOURCES;
+        break;
     case BLW_CMD_ADD_BLOCKIP:
         BlwAddBlockIp(cfg.BlockIpV4, cfg.BlockPort);
         KdPrint(("[Bulwark] Net block added: 0x%08x:%u\n", cfg.BlockIpV4, cfg.BlockPort));

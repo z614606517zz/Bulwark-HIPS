@@ -99,8 +99,10 @@ void bindEtw(const QJsonObject& o, EtwOptions& e) {
     bindBool(o, "KernelAuditApi", e.KernelAuditApi);
     bindInt(o, "PerProcessKillPerMinute", e.PerProcessKillPerMinute);
     bindBool(o, "KernelFileWriteAttribution", e.KernelFileWriteAttribution);
+    bindBool(o, "DeveloperCredentialReads", e.DeveloperCredentialReads);
     bindInt(o, "AttributionPathMax", e.AttributionPathMax);
     bindBool(o, "NetworkUntrustedOnly", e.NetworkUntrustedOnly);
+    bindBool(o, "WmiActivity", e.WmiActivity);
     bindInt(o, "PerProcessNetPerMinute", e.PerProcessNetPerMinute);
     bindInt(o, "PerProcessRegPerMinute", e.PerProcessRegPerMinute);
     bindInt(o, "PerProcessFilePerMinute", e.PerProcessFilePerMinute);
@@ -167,6 +169,9 @@ bool BulwarkOptions::loadFromFile(const QString& appsettingsPath) {
     bindStrList(o, "AbusedSignerThumbprints", AbusedSignerThumbprints);
     bindStrList(o, "AbusedSignerPublishers", AbusedSignerPublishers);
     bindBool(o, "SelfProtectionAlertEnabled", SelfProtectionAlertEnabled);
+    bindBool(o, "SmbAuditEnabled", SmbAuditEnabled);
+    bindBool(o, "BitLockerAuditEnabled", BitLockerAuditEnabled);
+    bindBool(o, "WmiRepositoryWatchEnabled", WmiRepositoryWatchEnabled);
     bindBool(o, "InstallDirAclSelfCheckEnabled", InstallDirAclSelfCheckEnabled);
     bindInt(o, "EventDrainIntervalMs", EventDrainIntervalMs);
     bindInt(o, "InlineReputationBudgetMs", InlineReputationBudgetMs);

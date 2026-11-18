@@ -78,9 +78,19 @@ BlwLoadImageNotify(
         // 开机后的驱动加载本来就少,全部上报:BYOVD 常把易受攻击驱动先放进 System32\drivers
         // 再建服务加载,只看可写目录会漏掉。
         report = TRUE;
+    } else if (BlwPathIsUserWritable(FullImageName->Buffer, chars)) {
+        report = TRUE;
     } else {
-        if (BlwPathIsUserWritable(FullImageName->Buffer, chars)) {
-            report = TRUE;
+        PEPROCESS host = NULL;
+        PUNICODE_STRING hostName = NULL;
+        // The target PID need not be the process currently executing this callback.
+        if (NT_SUCCESS(PsLookupProcessByProcessId(ProcessId, &host)) && host != NULL) {
+            if (NT_SUCCESS(SeLocateProcessImageName(host, &hostName)) && hostName != NULL) {
+                report = BlwIsInjectionTelemetryTarget(hostName->Buffer,
+                    (USHORT)(hostName->Length / sizeof(WCHAR)));
+                ExFreePool(hostName);
+            }
+            ObDereferenceObject(host);
         }
     }
 
